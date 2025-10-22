@@ -587,8 +587,16 @@ def create_application():
     
     return application
 
-# Create application instance
-application = create_application()
+
+
+# Remove the global application instance
+# application = create_application()  # ← DELETE THIS LINE
+
+def get_application():
+    """Get or create the application instance"""
+    if not hasattr(app, 'telegram_application'):
+        app.telegram_application = create_application()
+    return app.telegram_application
 
 # Webhook routes
 @app.route('/webhook', methods=['POST'])
@@ -596,8 +604,9 @@ async def webhook():
     """Handle Telegram webhook updates"""
     try:
         data = request.get_json()
-        logger.info(f"Received update")
+        logger.info("Received update")
         
+        application = get_application()
         update = Update.de_json(data, application.bot)
         await application.process_update(update)
         
@@ -605,6 +614,7 @@ async def webhook():
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
