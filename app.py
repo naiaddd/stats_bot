@@ -1,16 +1,16 @@
 """
-Telegram Stats Tracker Bot - Production Ready for Railway
+Telegram Stats Tracker Bot - Python Webhook Version
+Using Firestore REST API (no authentication required)
 """
 
 import os
 import logging
-import asyncio
+import json
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 
 from flask import Flask, request, jsonify
-import firebase_admin
-from firebase_admin import credentials, firestore
 from telegram import (
     Update, 
     InlineKeyboardButton, 
@@ -26,73 +26,96 @@ from telegram.ext import (
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure logging for production
+# Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Firebase initialization
-def initialize_firebase():
-    """Initialize Firebase - simplified version"""
-    try:
-        if not firebase_admin._apps:
-            project_id = os.getenv('FIREBASE_PROJECT_ID')
-            private_key = os.getenv('FIREBASE_PRIVATE_KEY')
-            client_email = os.getenv('FIREBASE_CLIENT_EMAIL')
-            
-            if not all([project_id, private_key, client_email]):
-                raise ValueError("Missing Firebase environment variables")
-            
-            private_key = private_key.replace('\\n', '\n')
-            
-            service_account_info = {
-                "type": "service_account",
-                "project_id": project_id,
-                "private_key": private_key,
-                "client_email": client_email,
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-            
-            cred = credentials.Certificate(service_account_info)
-            firebase_admin.initialize_app(cred)
-            logger.info("Firebase initialized successfully")
-            
-    except Exception as e:
-        logger.error(f"Firebase initialization failed: {e}")
-        raise
-
 class FirestoreDB:
     def __init__(self):
-        self.db = firestore.client()
+        self.project_id = os.getenv('FIREBASE_PROJECT_ID')
+        if not self.project_id:
+            logger.error("FIREBASE_PROJECT_ID environment variable is required")
+            raise ValueError("FIREBASE_PROJECT_ID environment variable is required")
+        
+        self.base_url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents"
     
     async def get_user(self, user_id: str) -> Dict[str, Any]:
-        """Get user data from Firestore"""
+        """Get user data from Firestore using REST API"""
         try:
-            doc_ref = self.db.collection('users').document(str(user_id))
-            doc = doc_ref.get()
-            
-            if not doc.exists:
+            response = requests.get(f"{self.base_url}/users/{user_id}")
+            if response.status_code == 404:
                 return {'stats': {}, 'groups': {}, 'timezone': 'UTC'}
             
-            data = doc.to_dict()
-            return {
-                'stats': data.get('stats', {}),
-                'groups': data.get('groups', {}),
-                'timezone': data.get('timezone', 'UTC')
-            }
+            data = response.json()
+            return self.parse_document(data)
         except Exception as e:
             logger.error(f"Get user error: {e}")
             return {'stats': {}, 'groups': {}, 'timezone': 'UTC'}
     
     async def set_user(self, user_id: str, data: Dict[str, Any]) -> None:
-        """Set user data in Firestore"""
+        """Set user data in Firestore using REST API"""
         try:
-            doc_ref = self.db.collection('users').document(str(user_id))
-            doc_ref.set(data, merge=True)
+            firestore_doc = self.to_firestore_document(data)
+            response = requests.patch(
+                f"{self.base_url}/users/{user_id}",
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps({'fields': firestore_doc})
+            )
+            response.raise_for_status()
         except Exception as e:
             logger.error(f"Set user error: {e}")
+    
+    def parse_document(self, doc):
+        """Parse Firestore document"""
+        if 'fields' not in doc:
+            return {}
+        
+        result = {}
+        for key, value in doc['fields'].items():
+            result[key] = self.parse_value(value)
+        return result
+    
+    def parse_value(self, value):
+        """Parse Firestore value types"""
+        if 'stringValue' in value:
+            return value['stringValue']
+        elif 'integerValue' in value:
+            return int(value['integerValue'])
+        elif 'doubleValue' in value:
+            return float(value['doubleValue'])
+        elif 'booleanValue' in value:
+            return value['booleanValue']
+        elif 'mapValue' in value:
+            return self.parse_document(value['mapValue'])
+        elif 'arrayValue' in value:
+            return [self.parse_value(v) for v in value['arrayValue'].get('values', [])]
+        return None
+    
+    def to_firestore_document(self, obj):
+        """Convert Python object to Firestore document"""
+        result = {}
+        for key, value in obj.items():
+            result[key] = self.to_firestore_value(value)
+        return result
+    
+    def to_firestore_value(self, value):
+        """Convert Python value to Firestore value"""
+        if isinstance(value, str):
+            return {'stringValue': value}
+        elif isinstance(value, int):
+            return {'integerValue': value}
+        elif isinstance(value, float):
+            return {'doubleValue': value}
+        elif isinstance(value, bool):
+            return {'booleanValue': value}
+        elif isinstance(value, list):
+            return {'arrayValue': {'values': [self.to_firestore_value(v) for v in value]}}
+        elif isinstance(value, dict):
+            return {'mapValue': {'fields': self.to_firestore_document(value)}}
+        return {'nullValue': None}
 
 # Helper functions
 def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
@@ -106,8 +129,9 @@ def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
         logger.error(f"Error formatting timestamp: {e}")
         return iso_string
 
-# Command handlers (same as before, but I'll include key ones for completeness)
+# Command handlers
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /start command"""
     welcome_text = """🎯 *Welcome to Stats Tracker Bot!*
 
 Track any metric across all your devices:
@@ -127,6 +151,83 @@ Track any metric across all your devices:
 
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
+async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /new command"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /new <category_name>\n"
+            "Example: /new weight\n"
+            "Example: /new study_hours"
+        )
+        return
+
+    category = '_'.join(context.args).lower()
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+    
+    user_data = await db.get_user(user_id)
+    
+    if category in user_data['stats']:
+        await update.message.reply_text(f"Category '{category}' already exists!")
+        return
+    
+    user_data['stats'][category] = {
+        'entries': [],
+        'created_at': datetime.utcnow().isoformat() + 'Z'
+    }
+
+    await db.set_user(user_id, user_data)
+    await update.message.reply_text(
+        f"✅ Created new category: *{category}*\n"
+        f"Use /add {category} <value> to log entries!",
+        parse_mode='Markdown'
+    )
+
+async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /add command"""
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: /add <category> <value> [note]\n"
+            "Example: /add weight 75.5\n"
+            "Example: /add workout 50 push-ups today"
+        )
+        return
+
+    category = context.args[0].lower()
+    try:
+        value = float(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Value must be a number!")
+        return
+
+    note = ' '.join(context.args[2:]) if len(context.args) > 2 else ''
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    user_data = await db.get_user(user_id)
+
+    if category not in user_data['stats']:
+        await update.message.reply_text(
+            f"❌ Category '{category}' doesn't exist.\n"
+            f"Create it first with: /new {category}"
+        )
+        return
+
+    entry = {
+        'value': value,
+        'note': note,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+
+    user_data['stats'][category]['entries'].append(entry)
+    await db.set_user(user_id, user_data)
+
+    response = f"✅ Added to *{category}*: {value}"
+    if note:
+        response += f"\n📝 Note: {note}"
+    
+    await update.message.reply_text(response, parse_mode='Markdown')
+
 async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /view command"""
     user_id = str(update.effective_user.id)
@@ -136,20 +237,27 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     all_stats = user_data['stats']
     all_groups = user_data['groups']
 
+    # Collect all categories that belong to groups
     grouped_cats = set()
     for group_categories in all_groups.values():
         if isinstance(group_categories, list):
             grouped_cats.update(group_categories)
 
+    # Ungrouped = categories not in any group
     ungrouped = [cat for cat in all_stats.keys() if cat not in grouped_cats]
+
+    # Construct buttons
     buttons = []
 
+    # Add ungrouped categories
     for cat in ungrouped:
         buttons.append([InlineKeyboardButton(f"📈 {cat}", callback_data=f"view_{cat}")])
 
+    # Add groups
     for group_name in all_groups.keys():
         buttons.append([InlineKeyboardButton(f"🗂️ {group_name}", callback_data=f"viewgroup_{group_name}")])
 
+    # Handle empty case
     if not buttons:
         await update.message.reply_text(
             "You don't have any categories or groups yet!\n"
@@ -162,6 +270,201 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "📊 *Your Stats and Groups:*\nSelect one to view details.",
         parse_mode='Markdown',
         reply_markup=keyboard
+    )
+
+async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /history command"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /history <category_or_group> [-days:days]\n"
+            "Example: /history weight\n"
+            "Example: /history weight -7:0 (last 7 days)\n"
+            "Example: /history workout_group -30:-7 (4 weeks ago to 1 week ago)"
+        )
+        return
+
+    category = context.args[0].lower()
+    days_back = None
+    days_forward = None
+
+    # Optional date range parsing
+    if len(context.args) > 1 and ':' in context.args[1]:
+        try:
+            back, forward = context.args[1].split(':')
+            days_back = int(back)
+            days_forward = int(forward)
+        except ValueError:
+            pass
+
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+    
+    user_data = await db.get_user(user_id)
+    if not user_data['stats'] and not user_data['groups']:
+        await update.message.reply_text("You don't have any stats or groups yet!")
+        return
+
+    entries = []
+    is_group = category in user_data['groups']
+
+    if is_group:
+        # Get entries from all categories in the group
+        group_categories = user_data['groups'][category]
+        for cat in group_categories:
+            if cat in user_data['stats']:
+                cat_entries = user_data['stats'][cat]['entries']
+                for entry in cat_entries:
+                    entry_with_category = entry.copy()
+                    entry_with_category['category'] = cat
+                    entries.append(entry_with_category)
+        # Sort by timestamp
+        entries.sort(key=lambda x: x['timestamp'])
+    elif category in user_data['stats']:
+        entries = user_data['stats'][category]['entries']
+    else:
+        await update.message.reply_text(f"❌ No category or group named '{category}'")
+        return
+
+    if not entries:
+        await update.message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
+        return
+
+    timezone = user_data['timezone']
+
+    # Date filtering
+    if days_back is not None and days_forward is not None:
+        now = datetime.utcnow()
+        start_date = datetime(now.year, now.month, now.day) - timedelta(days=abs(days_back))
+        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward)
+        
+        filtered_entries = []
+        for entry in entries:
+            entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', ''))
+            if start_date <= entry_date <= end_date:
+                filtered_entries.append(entry)
+        entries = filtered_entries
+
+    # Get last 10 entries
+    entries = entries[-10:]
+    entries.reverse()
+
+    # Build response
+    response = f"📊 *History for {category}:*\n\n"
+    last_date = None
+    
+    for entry in entries:
+        entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '')).date()
+        if last_date and last_date != entry_date:
+            response += '─────────────────\n'
+        last_date = entry_date
+
+        tag = f"[{entry['category']}] " if 'category' in entry else ''
+        formatted_time = format_timestamp(entry['timestamp'], timezone)
+        response += f"• {tag}{entry['value']} - {formatted_time}\n"
+        if entry.get('note'):
+            response += f"  _{entry['note']}_\n"
+
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /delete command"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /delete <category>\n"
+            "Example: /delete weight"
+        )
+        return
+
+    category = context.args[0].lower()
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    user_data = await db.get_user(user_id)
+
+    if category not in user_data['stats']:
+        await update.message.reply_text(f"❌ Category '{category}' not found")
+        return
+
+    del user_data['stats'][category]
+    await db.set_user(user_id, user_data)
+    await update.message.reply_text(f"✅ Deleted category: {category}")
+
+async def handle_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /timezone command"""
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    if not context.args:
+        user_data = await db.get_user(user_id)
+        current_tz = user_data['timezone']
+        
+        await update.message.reply_text(
+            f"⏰ *Current timezone:* {current_tz}\n\n"
+            f"To change, use: /timezone <timezone>\n\n"
+            f"*Examples:*\n"
+            f"/timezone America/New_York\n"
+            f"/timezone Europe/London\n"
+            f"/timezone Asia/Ho_Chi_Minh\n"
+            f"/timezone Asia/Tokyo\n\n"
+            f"Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
+            parse_mode='Markdown'
+        )
+        return
+
+    timezone = '_'.join(context.args)
+    
+    # Basic validation
+    if '/' not in timezone:
+        await update.message.reply_text(
+            f"❌ Invalid timezone format: {timezone}\n\n"
+            f"Use format like: America/New_York or Asia/Tokyo\n"
+            f"Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
+        )
+        return
+
+    user_data = await db.get_user(user_id)
+    user_data['timezone'] = timezone
+    await db.set_user(user_id, user_data)
+    
+    await update.message.reply_text(f"✅ Timezone set to: *{timezone}*", parse_mode='Markdown')
+
+async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /group command"""
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: /group <group_name> <category1> [category2] ...\n"
+            "Example: /group workout squats pushups lunges\n\n"
+            "To view a group: /history workout"
+        )
+        return
+
+    group_name = context.args[0].lower()
+    categories = [cat.lower() for cat in context.args[1:]]
+    
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    # Verify all categories exist
+    user_data = await db.get_user(user_id)
+    missing_categories = [cat for cat in categories if cat not in user_data['stats']]
+    
+    if missing_categories:
+        await update.message.reply_text(
+            f"❌ These categories don't exist: {', '.join(missing_categories)}\n"
+            "Create them first with /new"
+        )
+        return
+
+    # Save the group
+    if 'groups' not in user_data:
+        user_data['groups'] = {}
+    user_data['groups'][group_name] = categories
+    
+    await db.set_user(user_id, user_data)
+    await update.message.reply_text(
+        f"✅ Created group *{group_name}*\n"
+        f"Contains: {', '.join(categories)}",
+        parse_mode='Markdown'
     )
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -209,33 +512,60 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
         categories = user_data['groups'][group_name]
         
+        # Create buttons for each category in the group
         buttons = []
         for cat in categories:
             buttons.append([InlineKeyboardButton(f"📈 {cat}", callback_data=f"view_{cat}")])
         
+        # Add back button
         buttons.append([InlineKeyboardButton('« Back to All Categories', callback_data='view_main')])
         
         keyboard = InlineKeyboardMarkup(buttons)
         await query.edit_message_text(
-            f"📂 *Group: {groupName}*\n\nSelect a category to view its latest entry:",
+            f"📂 *Group: {group_name}*\n\nSelect a category to view its latest entry:",
             parse_mode='Markdown',
             reply_markup=keyboard
         )
 
     elif data == 'view_main':
-        await handle_view(update, context)
+        # Return to main view
+        user_data = await db.get_user(user_id)
+        all_stats = user_data['stats']
+        all_groups = user_data['groups']
 
-# Add other command handlers (new, add, history, delete, timezone, group) here...
-# They remain exactly the same as in our previous version
+        grouped_cats = set()
+        for group_categories in all_groups.values():
+            if isinstance(group_categories, list):
+                grouped_cats.update(group_categories)
+
+        ungrouped = [cat for cat in all_stats.keys() if cat not in grouped_cats]
+
+        buttons = []
+        for cat in ungrouped:
+            buttons.append([InlineKeyboardButton(f"📈 {cat}", callback_data=f"view_{cat}")])
+
+        for group_name in all_groups.keys():
+            buttons.append([InlineKeyboardButton(f"🗂️ {group_name}", callback_data=f"viewgroup_{group_name}")])
+
+        if not buttons:
+            await query.edit_message_text(
+                "You don't have any categories or groups yet!\n"
+                "Create one with: /new <name> or /group <group> <cat1> [cat2] ..."
+            )
+            return
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await query.edit_message_text(
+            "📊 *Your Stats and Groups:*\nSelect one to view details.",
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
 
 def create_application():
     """Create and configure the Telegram Bot Application"""
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
-    
-    # Initialize Firebase
-    initialize_firebase()
     
     # Create application
     application = Application.builder().token(token).build()
@@ -288,8 +618,5 @@ def home():
         'status': 'Telegram Stats Bot is running!',
         'timestamp': datetime.utcnow().isoformat()
     })
-
-# Initialize on import
-initialize_firebase()
 
 # Note: No app.run() here - Railway handles the process
