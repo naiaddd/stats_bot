@@ -35,26 +35,40 @@ logger = logging.getLogger(__name__)
 
 # Firebase initialization
 def initialize_firebase():
-    """Initialize Firebase Admin SDK for production"""
     try:
         if not firebase_admin._apps:
-            # Use environment variables (set in Railway dashboard)
+            project_id = os.getenv('FIREBASE_PROJECT_ID')
+            private_key = os.getenv('FIREBASE_PRIVATE_KEY')
+            client_email = os.getenv('FIREBASE_CLIENT_EMAIL')
+            
+            # Debug logging
+            logger.info(f"Project ID: {project_id}")
+            logger.info(f"Client Email: {client_email}")
+            logger.info(f"Private key starts with: {private_key[:50] if private_key else 'None'}")
+            logger.info(f"Private key contains \\n: {'\\n' in private_key if private_key else False}")
+            
+            if not all([project_id, private_key, client_email]):
+                logger.error("Missing required Firebase environment variables")
+                return
+            
+            private_key = private_key.replace('\\n', '\n')
+            logger.info(f"After replace - contains actual newlines: {'\n' in private_key}")
+            
             service_account_info = {
                 "type": "service_account",
-                "project_id": os.getenv('FIREBASE_PROJECT_ID'),
-                "private_key_id": os.getenv('FIREBASE_PRIVATE_KEY_ID', ''),
-                "private_key": os.getenv('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n'),
-                "client_email": os.getenv('FIREBASE_CLIENT_EMAIL'),
-                "client_id": os.getenv('FIREBASE_CLIENT_ID', ''),
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "project_id": project_id,
+                "private_key": private_key,
+                "client_email": client_email,
                 "token_uri": "https://oauth2.googleapis.com/token",
             }
+            
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
             logger.info("Firebase initialized successfully")
     except Exception as e:
         logger.error(f"Firebase initialization failed: {e}")
-        raise
+
+
 
 class FirestoreDB:
     def __init__(self):
