@@ -1,16 +1,19 @@
 """
-Telegram Stats Tracker Bot - Python Webhook Version
-Using Firestore REST API (no authentication required)
+Telegram Stats Tracker Bot - FastAPI Version
+Using Firestore REST API with async HTTP requests
 """
 
 import os
 import logging
 import json
-import requests
+import httpx
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from contextlib import asynccontextmanager
 
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+
 from telegram import (
     Update, 
     InlineKeyboardButton, 
@@ -22,9 +25,6 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes
 )
-
-# Initialize Flask app
-app = Flask(__name__)
 
 # Configure logging
 logging.basicConfig(
@@ -41,11 +41,16 @@ class FirestoreDB:
             raise ValueError("FIREBASE_PROJECT_ID environment variable is required")
         
         self.base_url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents"
+        self.client = httpx.AsyncClient(timeout=30.0)
+    
+    async def close(self):
+        """Close the HTTP client"""
+        await self.client.aclose()
     
     async def get_user(self, user_id: str) -> Dict[str, Any]:
         """Get user data from Firestore using REST API"""
         try:
-            response = requests.get(f"{self.base_url}/users/{user_id}")
+            response = await self.client.get(f"{self.base_url}/users/{user_id}")
             if response.status_code == 404:
                 return {'stats': {}, 'groups': {}, 'timezone': 'UTC'}
             
@@ -59,10 +64,10 @@ class FirestoreDB:
         """Set user data in Firestore using REST API"""
         try:
             firestore_doc = self.to_firestore_document(data)
-            response = requests.patch(
+            response = await self.client.patch(
                 f"{self.base_url}/users/{user_id}",
                 headers={'Content-Type': 'application/json'},
-                data=json.dumps({'fields': firestore_doc})
+                content=json.dumps({'fields': firestore_doc})
             )
             response.raise_for_status()
         except Exception as e:
@@ -587,46 +592,90 @@ def create_application():
     
     return application
 
+# Global application instance
+telegram_app: Optional[Application] = None
 
+# Lifespan context manager for FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan"""
+    global telegram_app
+    
+    # Startup
+    logger.info("Starting up...")
+    telegram_app = create_application()
+    await telegram_app.initialize()
+    await telegram_app.start()
+    logger.info("Telegram application initialized and started")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down...")
+    if telegram_app:
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+        # Close database HTTP client
+        if 'db' in telegram_app.bot_data:
+            await telegram_app.bot_data['db'].close()
+    logger.info("Telegram application stopped")
 
-# Remove the global application instance
-# application = create_application()  # ← DELETE THIS LINE
+# Initialize FastAPI app
+app = FastAPI(title="Telegram Stats Tracker Bot", lifespan=lifespan)
 
-def get_application():
-    """Get or create the application instance"""
-    if not hasattr(app, 'telegram_application'):
-        app.telegram_application = create_application()
-    return app.telegram_application
-
-# Webhook routes
-@app.route('/webhook', methods=['POST'])
-async def webhook():
+# Webhook endpoint
+@app.post("/webhook")
+async def webhook(request: Request):
     """Handle Telegram webhook updates"""
     try:
-        data = request.get_json()
-        logger.info("Received update")
+        data = await request.json()
+        logger.info("Received webhook update")
         
-        application = get_application()
-        update = Update.de_json(data, application.bot)
-        await application.process_update(update)
+        if telegram_app is None:
+            raise HTTPException(status_code=503, detail="Bot not initialized")
         
-        return jsonify({'status': 'ok'})
+        update = Update.de_json(data, telegram_app.bot)
+        await telegram_app.process_update(update)
+        
+        return JSONResponse(content={'status': 'ok'})
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logger.error(f"Webhook error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.route('/health', methods=['GET'])
-def health_check():
+# Health check endpoint
+@app.get("/health")
+async def health_check():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
+    return JSONResponse(content={
+        'status': 'healthy',
+        'bot_initialized': telegram_app is not None,
+        'timestamp': datetime.utcnow().isoformat()
+    })
 
-@app.route('/')
-def home():
+# Root endpoint
+@app.get("/")
+async def root():
     """Root endpoint"""
-    return jsonify({
+    return JSONResponse(content={
         'status': 'Telegram Stats Bot is running!',
         'timestamp': datetime.utcnow().isoformat()
     })
 
-# Note: No app.run() here - Railway handles the process
+# Optional: Endpoint to set webhook (call this once after deployment)
+@app.post("/set-webhook")
+async def set_webhook(webhook_url: str):
+    """Set the Telegram webhook URL"""
+    try:
+        if telegram_app is None:
+            raise HTTPException(status_code=503, detail="Bot not initialized")
+        
+        await telegram_app.bot.set_webhook(url=webhook_url)
+        return JSONResponse(content={
+            'status': 'success',
+            'webhook_url': webhook_url
+        })
+    except Exception as e:
+        logger.error(f"Set webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Run with: uvicorn main:app --host 0.0.0.0 --port 8000
