@@ -35,25 +35,17 @@ logger = logging.getLogger(__name__)
 
 # Firebase initialization
 def initialize_firebase():
-    """Initialize Firebase with proper error handling"""
+    """Initialize Firebase - simplified version"""
     try:
         if not firebase_admin._apps:
             project_id = os.getenv('FIREBASE_PROJECT_ID')
             private_key = os.getenv('FIREBASE_PRIVATE_KEY')
             client_email = os.getenv('FIREBASE_CLIENT_EMAIL')
             
-            # Debug logging
-            logger.info(f"Project ID: {project_id}")
-            logger.info(f"Client Email: {client_email}")
-            logger.info(f"Private key starts with: {private_key[:50] if private_key else 'None'}")
-            logger.info(f"Private key contains \\n: {'\\n' in private_key if private_key else False}")
-            
             if not all([project_id, private_key, client_email]):
-                logger.error("Missing required Firebase environment variables")
                 raise ValueError("Missing Firebase environment variables")
             
             private_key = private_key.replace('\\n', '\n')
-            logger.info(f"After replace - contains actual newlines: {'\n' in private_key}")
             
             service_account_info = {
                 "type": "service_account",
@@ -66,15 +58,10 @@ def initialize_firebase():
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
             logger.info("Firebase initialized successfully")
-            return True
             
     except Exception as e:
         logger.error(f"Firebase initialization failed: {e}")
-        # Don't just log - re-raise the exception to stop the app
         raise
-    
-    return True
-
 
 class FirestoreDB:
     def __init__(self):
