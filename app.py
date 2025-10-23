@@ -535,8 +535,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif data == 'view_main':
         # Return to main view
         user_data = await db.get_user(user_id)
-        all_stats = user_data['stats']
-        all_groups = user_data['groups']
+        all_stats = user_data['stats', {}]
+        all_groups = user_data['groups', {}]
 
         grouped_cats = set()
         for group_categories in all_groups.values():
