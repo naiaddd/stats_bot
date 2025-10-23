@@ -497,7 +497,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         timezone = user_data['timezone']
         latest = entries[-1]
 
-        response = f"📊 *{category.upper()}*\n\n"
+        response = f"📊 *{category}*\n\n"
         response += f"Latest: *{latest['value']}*\n"
         response += f"Logged: {format_timestamp(latest['timestamp'], timezone)}\n"
         if latest.get('note'):
