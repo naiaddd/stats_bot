@@ -11,8 +11,12 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from contextlib import asynccontextmanager
 
+
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
+
+
 
 from telegram import (
     Update, 
@@ -26,12 +30,21 @@ from telegram.ext import (
     ContextTypes
 )
 
+
+
+
+
+
+
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+
 
 class FirestoreDB:
     def __init__(self):
@@ -122,6 +135,9 @@ class FirestoreDB:
             return {'mapValue': {'fields': self.to_firestore_document(value)}}
         return {'nullValue': None}
 
+
+
+
 # Helper functions
 def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     """Format ISO timestamp to readable string"""
@@ -133,6 +149,8 @@ def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     except Exception as e:
         logger.error(f"Error formatting timestamp: {e}")
         return iso_string
+
+
 
 # Command handlers
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -232,6 +250,10 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         response += f"\n📝 Note: {note}"
     
     await update.message.reply_text(response, parse_mode='Markdown')
+
+
+
+
 
 async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /view command"""
