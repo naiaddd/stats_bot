@@ -531,7 +531,43 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
 
-    if data.startswith('view_'):
+
+    elif data == 'view_main':
+        # Return to main view
+        user_data = await db.get_user(user_id)
+        all_stats = user_data.get('stats', {})
+        all_groups = user_data.get('groups', {})
+
+        grouped_cats = set()
+        for group_categories in all_groups.values():
+            if isinstance(group_categories, list):
+                grouped_cats.update(group_categories)
+
+        ungrouped = [cat for cat in all_stats.keys() if cat not in grouped_cats]
+
+        buttons = []
+        for cat in ungrouped:
+            buttons.append([InlineKeyboardButton(f"📈 {cat}", callback_data=f"view_{cat}")])
+
+        for group_name in all_groups.keys():
+            buttons.append([InlineKeyboardButton(f"🗂️ {group_name}", callback_data=f"viewgroup_{group_name}")])
+
+        if not buttons:
+            await query.edit_message_text(
+                "You don't have any categories or groups yet!\n"
+                "Create one with: /new <name> or /group <group> <cat1> [cat2] ..."
+            )
+            return
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        await query.edit_message_text(
+            "📊 *Your Stats and Groups:*\nSelect one to view details.",
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
+
+    
+    elif data.startswith('view_'):
         category = data.replace('view_', '')
         user_data = await db.get_user(user_id)
 
@@ -582,39 +618,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             reply_markup=keyboard
         )
 
-    elif data == 'view_main':
-        # Return to main view
-        user_data = await db.get_user(user_id)
-        all_stats = user_data['stats', {}]
-        all_groups = user_data['groups', {}]
 
-        grouped_cats = set()
-        for group_categories in all_groups.values():
-            if isinstance(group_categories, list):
-                grouped_cats.update(group_categories)
-
-        ungrouped = [cat for cat in all_stats.keys() if cat not in grouped_cats]
-
-        buttons = []
-        for cat in ungrouped:
-            buttons.append([InlineKeyboardButton(f"📈 {cat}", callback_data=f"view_{cat}")])
-
-        for group_name in all_groups.keys():
-            buttons.append([InlineKeyboardButton(f"🗂️ {group_name}", callback_data=f"viewgroup_{group_name}")])
-
-        if not buttons:
-            await query.edit_message_text(
-                "You don't have any categories or groups yet!\n"
-                "Create one with: /new <name> or /group <group> <cat1> [cat2] ..."
-            )
-            return
-
-        keyboard = InlineKeyboardMarkup(buttons)
-        await query.edit_message_text(
-            "📊 *Your Stats and Groups:*\nSelect one to view details.",
-            parse_mode='Markdown',
-            reply_markup=keyboard
-        )
 
 
 
