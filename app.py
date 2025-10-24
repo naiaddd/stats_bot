@@ -374,33 +374,6 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 
-'''
-
-async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /delete command"""
-    if not context.args:
-        await update.message.reply_text(
-            "Usage: /delete <category>\n"
-            "Example: /delete weight"
-        )
-        return
-
-    category = context.args[0].lower()
-    user_id = str(update.effective_user.id)
-    db = context.bot_data['db']
-
-    user_data = await db.get_user(user_id)
-
-    if category not in user_data['stats']:
-        await update.message.reply_text(f"❌ Category '{category}' not found")
-        return
-
-    del user_data['stats'][category]
-    await db.set_user(user_id, user_data)
-    await update.message.reply_text(f"✅ Deleted category: {category}")
-
-
-'''
 
 
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
