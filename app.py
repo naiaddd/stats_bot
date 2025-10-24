@@ -299,10 +299,15 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         reply_markup=keyboard
     )
 
+
+
+
+
+
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
     if not context.args:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Usage: /history <category_or_group> [-days:days]\n"
             "Example: /history weight\n"
             "Example: /history weight -7:0 (last 7 days)\n"
@@ -328,7 +333,7 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     user_data = await db.get_user(user_id)
     if not user_data['stats'] and not user_data['groups']:
-        await update.message.reply_text("You don't have any stats or groups yet!")
+        await update.effectuve_message.reply_text("You don't have any stats or groups yet!")
         return
 
     entries = []
@@ -349,11 +354,11 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif category in user_data['stats']:
         entries = user_data['stats'][category]['entries']
     else:
-        await update.message.reply_text(f"❌ No category or group named '{category}'")
+        await update.effective_message.reply_text(f"❌ No category or group named '{category}'")
         return
 
     if not entries:
-        await update.message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
+        await update.effective_message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
         return
 
     timezone = user_data['timezone']
@@ -391,7 +396,7 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if entry.get('note'):
             response += f"  _{entry['note']}_\n"
 
-    await update.message.reply_text(response, parse_mode='Markdown')
+    await update.effective_message.reply_text(response, parse_mode='Markdown')
 
 
 
@@ -532,7 +537,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db = context.bot_data['db']
 
 
-    elif data == 'view_main':
+    if data == 'view_main':
         # Return to main view
         user_data = await db.get_user(user_id)
         all_stats = user_data.get('stats', {})
@@ -568,30 +573,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     
     elif data.startswith('view_'):
+        elif data.startswith('view_'):
         category = data.replace('view_', '')
-        user_data = await db.get_user(user_id)
-
-        if category not in user_data['stats']:
-            await query.edit_message_text(f"No entries for {category} yet!")
-            return
-
-        entries = user_data['stats'][category]['entries']
-        if not entries:
-            await query.edit_message_text(f"No entries for {category} yet!")
-            return
-
-        timezone = user_data['timezone']
-        latest = entries[-1]
-
-        response = f"📊 *{category}*\n\n"
-        response += f"Latest: *{latest['value']}*\n"
-        response += f"Logged: {format_timestamp(latest['timestamp'], timezone)}\n"
-        if latest.get('note'):
-            response += f"Note: _{latest['note']}_\n"
-        response += f"\nTotal entries: {len(entries)}\n"
-        response += f"\nUse /history {category} for full history"
-
-        await query.edit_message_text(response, parse_mode='Markdown')
+        # Set context.args so handle_history knows which category to show
+        context.args = [category]     
+        # Delete the message with the buttons
+        await query.delete_message()    
+        # Call the history handler, which will send a new message
+        await handle_history(update, context)
 
     elif data.startswith('viewgroup_'):
         group_name = data.replace('viewgroup_', '')
