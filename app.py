@@ -371,6 +371,11 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text(response, parse_mode='Markdown')
 
+
+
+
+'''
+
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /delete command"""
     if not context.args:
@@ -393,6 +398,47 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     del user_data['stats'][category]
     await db.set_user(user_id, user_data)
     await update.message.reply_text(f"✅ Deleted category: {category}")
+
+
+'''
+
+
+async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /delete command"""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /delete <category_or_group>\n"
+            "Example: /delete weight\n"
+            "Example: /delete workout_group"
+        )
+        return
+
+    target = context.args[0].lower()
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    user_data = await db.get_user(user_id)
+
+    # Check if it's a category
+    if target in user_data['stats']:
+        del user_data['stats'][target]
+        await db.set_user(user_id, user_data)
+        await update.message.reply_text(f"✅ Deleted category: {target}")
+    
+    # Check if it's a group
+    elif 'groups' in user_data and target in user_data['groups']:
+        del user_data['groups'][target]
+        await db.set_user(user_id, user_data)
+        await update.message.reply_text(f"✅ Deleted group: {target}")
+    
+    else:
+        await update.message.reply_text(f"❌ Category or group '{target}' not found")
+
+
+
+
+
+
 
 async def handle_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /timezone command"""
@@ -433,6 +479,10 @@ async def handle_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     await update.message.reply_text(f"✅ Timezone set to: *{timezone}*", parse_mode='Markdown')
 
+
+
+
+
 async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /group command"""
     if len(context.args) < 2:
@@ -471,6 +521,11 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Contains: {', '.join(categories)}",
         parse_mode='Markdown'
     )
+
+
+
+
+
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle callback queries from inline keyboards"""
@@ -566,6 +621,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             reply_markup=keyboard
         )
 
+
+
+
+
+
+
 def create_application():
     """Create and configure the Telegram Bot Application"""
     token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -591,6 +652,10 @@ def create_application():
     application.add_handler(CallbackQueryHandler(handle_callback))
     
     return application
+
+
+
+
 
 # Global application instance
 telegram_app: Optional[Application] = None
