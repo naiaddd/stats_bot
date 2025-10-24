@@ -569,11 +569,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "📊 *Your Stats and Groups:*\nSelect one to view details.",
             parse_mode='Markdown',
             reply_markup=keyboard
-        )
-
-    
+        
     elif data.startswith('view_'):
-        elif data.startswith('view_'):
         category = data.replace('view_', '')
         # Set context.args so handle_history knows which category to show
         context.args = [category]     
