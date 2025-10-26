@@ -10,39 +10,46 @@ import httpx
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from contextlib import asynccontextmanager
-
-
-
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-
-
-
-from telegram import (
-    Update, 
-    InlineKeyboardButton, 
-    InlineKeyboardMarkup
-)
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 
 
 
 
-
-
-
-# Configure logging
+'''
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+'''
+
+# Simplified logging
+logging.getLogger(__name__).setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+#timestamp Helper function 
+def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
+    try:
+        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=pytz.UTC)
+        try:
+            tz = pytz.timezone(timezone)
+        except pytz.exceptions.UnknownTimeZoneError:
+            logger.warning(f"Invalid timezone '{timezone}', falling back to UTC")
+            tz = pytz.UTC
+        dt = dt.astimezone(tz)
+        return dt.strftime('%b %d, %Y at %I:%M %p %Z')
+    except Exception as e:
+        logger.error(f"Error formatting timestamp: {e}")
+        return iso_string
+
+
 
 
 
