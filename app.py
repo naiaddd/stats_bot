@@ -1,3 +1,8 @@
+
+
+
+
+
 """
 Telegram Stats Tracker Bot - FastAPI Version
 Using Firestore REST API with async HTTP requests
@@ -672,6 +677,112 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 
+async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manual migration command for entries before November 1, 2025"""
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    # Check for dry-run mode
+    dry_run = len(context.args) > 0 and context.args[0].lower() == 'dry-run'
+
+    if dry_run:
+        await update.message.reply_text("🔍 Running migration in DRY-RUN mode (no changes will be saved)")
+    else:
+        await update.message.reply_text("🔄 Starting timezone migration for entries before Nov 1, 2025...")
+
+    try:
+        user_data = await db.get_user(user_id)
+        if not user_data.get('stats'):
+            await update.message.reply_text("ℹ️ No stats found to migrate")
+            return
+
+        migrated_count = 0
+        error_count = 0
+        category_report = []
+
+        # Fixed cutoff: November 1, 2025
+        cutoff_time = datetime(2025, 11, 1, 12, 0, 0)
+        logger.info(f"Migration cutoff time: {cutoff_time}")
+
+        for category_name, category_data in user_data['stats'].items():
+            category_migrated = 0
+            category_errors = 0
+
+            for i, entry in enumerate(category_data['entries']):
+                try:
+                    # Parse the timestamp
+                    timestamp_str = entry['timestamp']
+                    if timestamp_str.endswith('Z'):
+                        entry_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    else:
+                        entry_time = datetime.fromisoformat(timestamp_str)
+
+                    # DEBUG: Log some entries to see what's happening
+                    if i < 3:  # Log first 3 entries for debugging
+                        logger.info(f"Entry {i} time: {entry_time}, cutoff: {cutoff_time}, before_cutoff: {entry_time < cutoff_time}")
+
+                    # Migrate entries before November 1, 2025
+                    if entry_time < cutoff_time:
+                        category_migrated += 1
+
+                        if not dry_run:
+                            # Perform the migration to HCMC timezone
+                            entry['timezone'] = 'Asia/Ho_Chi_Minh'
+
+                            # Convert timestamp to HCMC timezone for storage
+                            hcmc_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+                            entry_local_time = entry_time.astimezone(hcmc_tz)
+                            entry['timestamp'] = entry_local_time.isoformat()
+
+                except Exception as e:
+                    logger.error(f"Error migrating entry {i} in category {category_name}: {e}")
+                    category_errors += 1
+                    error_count += 1
+
+            if category_migrated > 0 or category_errors > 0:
+                category_report.append(
+                    f"• {category_name}: {category_migrated} migrated, {category_errors} errors"
+                )
+
+            migrated_count += category_migrated
+
+        # Save changes if not dry-run and we have migrations
+        if not dry_run and migrated_count > 0:
+            await db.set_user(user_id, user_data)
+            logger.info(f"Saved {migrated_count} migrated entries for user {user_id}")
+
+        # Build report message
+        report_lines = []
+
+        if dry_run:
+            report_lines.append("📊 *DRY-RUN RESULTS* (Entries before Nov 1, 2025)")
+        else:
+            report_lines.append("📊 *MIGRATION RESULTS* (Entries before Nov 1, 2025)")
+
+        report_lines.append(f"Total entries migrated: {migrated_count}")
+        report_lines.append(f"Total errors: {error_count}")
+
+        if category_report:
+            report_lines.append("\n*Category Breakdown:*")
+            report_lines.extend(category_report)
+
+        if migrated_count == 0 and error_count == 0:
+            report_lines.append("\n✅ No entries found before November 1, 2025")
+        elif dry_run and migrated_count > 0:
+            report_lines.append(f"\n💡 Dry-run: {migrated_count} entries would be migrated")
+            report_lines.append("Run without 'dry-run' to apply changes")
+
+        await update.message.reply_text("\n".join(report_lines), parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Migration failed for user {user_id}: {e}")
+        await update.message.reply_text(
+            f"❌ Migration failed: {str(e)}\n"
+            "Check logs for details."
+        )
+
+
+
 
 
 
@@ -722,66 +833,6 @@ def create_application():
     application.add_handler(CallbackQueryHandler(handle_callback))
     
     return application
-
-
-
-# Add this function to your main file or a separate migration file
-async def migrate_all_users_timezones(db):
-    """One-time migration for all users"""
-    logger.info("Starting timezone migration...")
-
-    # This would need to iterate through all users in your database
-    # Since Firestore REST doesn't have easy "get all users", we'll handle this per-user
-    # You might need to run this manually for each user or find another way
-
-    logger.info("Timezone migration completed")
-
-# Add this to your handle_start or create a /migrate command
-async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Manual migration command"""
-    user_id = str(update.effective_user.id)
-    db = context.bot_data['db']
-
-    user_data = await db.get_user(user_id)
-    migrated_count = 0
-
-    # Migration cutoff: Nov 1, 2024 12:00 UTC
-    cutoff_time = datetime(2025, 11, 1, 12, 0, 0)
-
-    for category_name, category_data in user_data['stats'].items():
-        for entry in category_data['entries']:
-            # Convert UTC timestamp to datetime
-            entry_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
-
-            # If entry is before cutoff and has no timezone, set to HCMC
-            if entry_time < cutoff_time and 'timezone' not in entry:
-                entry['timezone'] = 'Asia/Ho_Chi_Minh'
-                migrated_count += 1
-
-                # Convert timestamp to HCMC timezone for storage
-                hcmc_tz = pytz.timezone('Asia/Ho_Chi_Minh')
-                entry_local_time = entry_time.astimezone(hcmc_tz)
-                entry['timestamp'] = entry_local_time.isoformat()
-
-    if migrated_count > 0:
-        await db.set_user(user_id, user_data)
-        await update.message.reply_text(f"✅ Migrated {migrated_count} entries to HCMC timezone")
-    else:
-        await update.message.reply_text("ℹ️ No entries needed migration")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
