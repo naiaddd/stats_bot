@@ -419,7 +419,6 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 
-
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
     if not context.args:
@@ -493,26 +492,57 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 filtered_entries.append(entry)
         entries = filtered_entries
 
-    # Reverse to show newest first (maintains original behavior without 10-entry limit)
+    # Reverse to show newest first
     entries.reverse()
 
-    # Build response
-    response = f"📊 *History for {category}:*\n\n"
-    last_date = None
+    # Group entries by date for smart chunking
+    date_groups = []
+    current_date = None
+    current_group = []
 
     for entry in entries:
         entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '')).date()
-        if last_date and last_date != entry_date:
-            response += '─────────────────\n'
-        last_date = entry_date
+        if entry_date != current_date:
+            if current_group:
+                date_groups.append((current_date, current_group))
+            current_date = entry_date
+            current_group = []
+        current_group.append(entry)
 
-        tag = f"[{entry['category']}] " if 'category' in entry else ''
-        formatted_time = format_timestamp(entry['timestamp'], timezone)
-        response += f"• {tag}{entry['value']} - {formatted_time}\n"
-        if entry.get('note'):
-            response += f"  _{entry['note']}_\n"
+    if current_group:
+        date_groups.append((current_date, current_group))
 
-    await update.effective_message.reply_text(response, parse_mode='Markdown')
+    # Build messages with smart chunking (preserve date groups)
+    messages = []
+    current_message = f"📊 *History for {category}:*\n\n"
+
+    for i, (date, group_entries) in enumerate(date_groups):
+        # Calculate what this group would add to the message
+        group_text = ""
+        if i > 0:  # Add separator for all but first group
+            group_text += '─────────────────\n'
+
+        for entry in group_entries:
+            tag = f"[{entry['category']}] " if 'category' in entry else ''
+            formatted_time = format_timestamp(entry['timestamp'], timezone)
+            group_text += f"• {tag}{entry['value']} - {formatted_time}\n"
+            if entry.get('note'):
+                group_text += f"  _{entry['note']}_\n"
+
+        # If adding this group would exceed ~3500 chars, send current message and start new one
+        if len(current_message + group_text) > 3500 and current_message.strip():
+            messages.append(current_message)
+            current_message = ""  # Continue seamlessly without header
+
+        current_message += group_text
+
+    # Add the final message
+    if current_message.strip():
+        messages.append(current_message)
+
+    # Send all messages
+    for message in messages:
+        await update.effective_message.reply_text(message, parse_mode='Markdown')
 
 
 
