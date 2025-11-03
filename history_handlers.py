@@ -86,26 +86,68 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # CORRECTED Date filtering
     if days_back is not None and days_forward is not None:
-        now = datetime.utcnow()
-        today_midnight = datetime(now.year, now.month, now.day)
+        # Get user timezone
+        try:
+            user_tz = pytz.timezone(user_data['timezone'])
+        except pytz.exceptions.UnknownTimeZoneError:
+            await update.effective_message.reply_text(
+                f"❌ Invalid timezone setting: '{user_data['timezone']}'\n"
+                f"Please set a valid timezone using /settimezone"
+            )
+            return
 
-        # FIXED: Use absolute values and proper direction
-        start_date = today_midnight - timedelta(days=abs(days_back))
-        end_date = today_midnight - timedelta(days=days_forward)
+        # Get current time in user's timezone
+        now_utc = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        now_user = now_utc.astimezone(user_tz)
+
+        # Calculate date range in user's timezone
+        user_midnight = user_tz.localize(datetime(now_user.year, now_user.month, now_user.day))
+
+        start_date = user_midnight - timedelta(days=abs(days_back))
+        end_date = user_midnight - timedelta(days=days_forward)
 
         # Adjust end date to be inclusive of the target day
-        if days_forward <= 0:  # -1:0 or -1:1
+        if days_forward <= 0:
             end_date += timedelta(days=1)
 
-        logger.info(f"Date range: {start_date} to {end_date}")
+        logger.info(f"Date range in user timezone: {start_date} to {end_date}")
 
         filtered_entries = []
         for entry in entries:
-            entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
-            if start_date <= entry_date < end_date:
-                filtered_entries.append(entry)
+            try:
+                # Parse timestamp with backward compatibility for both formats
+                timestamp_str = entry['timestamp']
+
+                # Handle both timezone-aware and naive timestamps
+                if timestamp_str.endswith('Z'):
+                    # UTC timestamp - make it timezone-aware
+                    entry_dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00')).replace(tzinfo=pytz.UTC)
+                elif '+' in timestamp_str:
+                    # Already timezone-aware format
+                    entry_dt = datetime.fromisoformat(timestamp_str)
+                else:
+                    # Naive timestamp (old format) - assume UTC and make timezone-aware
+                    entry_dt = datetime.fromisoformat(timestamp_str).replace(tzinfo=pytz.UTC)
+
+                # Convert to user timezone for date comparison
+                entry_user_tz = entry_dt.astimezone(user_tz)
+
+                if start_date <= entry_user_tz < end_date:
+                    filtered_entries.append(entry)
+
+            except ValueError as e:
+                logger.warning(f"Invalid timestamp format for entry: {entry.get('timestamp')} - {e}")
+                continue
 
         entries = filtered_entries
+
+
+
+
+
+
+
+
 
     # If no entries after filtering, show message
     if not entries and days_back is not None and days_forward is not None:
