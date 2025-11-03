@@ -482,7 +482,7 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Date filtering
     if days_back is not None and days_forward is not None:
         now = datetime.utcnow()
-        start_date = datetime(now.year, now.month, now.day) - timedelta(days=abs(days_back))
+        start_date = datetime(now.year, now.month, now.day) - timedelta(days=days_back)
         end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward) + timedelta(days=1)
 
         filtered_entries = []
