@@ -494,14 +494,11 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         entries = filtered_entries
 
 
-
-
-
-'''    # Get entries
+'''
+    # Get last 10 entries
     entries = entries[-10:]
     entries.reverse()
 '''
-
 
 
     # Build response
