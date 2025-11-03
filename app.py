@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import pytz
-from history_handlers import handle_history
+from history_handlers import handle_history, format_timestamp
 
 
 
@@ -253,9 +253,6 @@ async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 
-
-
-
 async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /add command"""
     if len(context.args) < 2:
@@ -279,6 +276,15 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     user_data = await db.get_user(user_id)
 
+    # TIMEZONE ENFORCEMENT
+    if 'timezone' not in user_data or not user_data['timezone']:
+        await update.message.reply_text(
+            "❌ Please set your timezone first using /timezone\n"
+            "Example: /timezone Australia/Sydney\n"
+            "Example: /timezone Asia/Ho_Chi_Minh"
+        )
+        return
+
     if category not in user_data['stats']:
         await update.message.reply_text(
             f"❌ Category '{category}' doesn't exist.\n"
@@ -286,10 +292,15 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
 
+    # Create timestamp in local timezone (NEW)
+    user_tz = pytz.timezone(user_data['timezone'])
+    local_time = datetime.now(pytz.UTC).astimezone(user_tz)  # Convert current UTC to local time
+
     entry = {
         'value': value,
         'note': note,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
+        'timestamp': local_time.isoformat(),  # Local time with offset
+        'timezone': user_data['timezone']     # Store timezone context
     }
 
     user_data['stats'][category]['entries'].append(entry)
@@ -298,12 +309,12 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     response = f"✅ Added to *{category}*: {value}"
     if note:
         response += f"\n📝 Note: {note}"
-    
+
+    # Show the local time it was recorded
+    formatted_time = format_timestamp(local_time.isoformat(), user_data['timezone'])
+    response += f"\n🕒 Recorded at: {formatted_time}"
+
     await update.message.reply_text(response, parse_mode='Markdown')
-
-
-
-
 
 
 
@@ -446,16 +457,16 @@ async def handle_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if not context.args:
         user_data = await db.get_user(user_id)
-        current_tz = user_data['timezone']
-        
+        current_tz = user_data.get('timezone', 'Not set')
+
         await update.message.reply_text(
             f"⏰ *Current timezone:* {current_tz}\n\n"
+            f"Future entries will use this timezone.\n\n"
             f"To change, use: /timezone <timezone>\n\n"
             f"*Examples:*\n"
-            f"/timezone America/New_York\n"
-            f"/timezone Europe/London\n"
+            f"/timezone Australia/Sydney\n"
             f"/timezone Asia/Ho_Chi_Minh\n"
-            f"/timezone Asia/Tokyo\n\n"
+            f"/timezone America/New_York\n\n"
             f"Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
             parse_mode='Markdown'
         )
@@ -713,7 +724,49 @@ def create_application():
 
 
 
+# Add this function to your main file or a separate migration file
+async def migrate_all_users_timezones(db):
+    """One-time migration for all users"""
+    logger.info("Starting timezone migration...")
 
+    # This would need to iterate through all users in your database
+    # Since Firestore REST doesn't have easy "get all users", we'll handle this per-user
+    # You might need to run this manually for each user or find another way
+
+    logger.info("Timezone migration completed")
+
+# Add this to your handle_start or create a /migrate command
+async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manual migration command"""
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    user_data = await db.get_user(user_id)
+    migrated_count = 0
+
+    # Migration cutoff: Nov 1, 2024 12:00 UTC
+    cutoff_time = datetime(2024, 11, 1, 12, 0, 0)
+
+    for category_name, category_data in user_data['stats'].items():
+        for entry in category_data['entries']:
+            # Convert UTC timestamp to datetime
+            entry_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
+
+            # If entry is before cutoff and has no timezone, set to HCMC
+            if entry_time < cutoff_time and 'timezone' not in entry:
+                entry['timezone'] = 'Asia/Ho_Chi_Minh'
+                migrated_count += 1
+
+                # Convert timestamp to HCMC timezone for storage
+                hcmc_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+                entry_local_time = entry_time.astimezone(hcmc_tz)
+                entry['timestamp'] = entry_local_time.isoformat()
+
+    if migrated_count > 0:
+        await db.set_user(user_id, user_data)
+        await update.message.reply_text(f"✅ Migrated {migrated_count} entries to HCMC timezone")
+    else:
+        await update.message.reply_text("ℹ️ No entries needed migration")
 
 
 
@@ -782,7 +835,6 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(title="Telegram Stats Tracker Bot", lifespan=lifespan)
-
 
 
 

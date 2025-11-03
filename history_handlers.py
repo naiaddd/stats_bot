@@ -1,14 +1,30 @@
 """
 History-related command handlers for Stats Tracker Bot
 """
-import pytz
+
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
+import pytz
 from telegram import Update
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+
+def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
+    """Format ISO timestamp to readable string using the provided timezone"""
+    try:
+        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        try:
+            tz = pytz.timezone(timezone)
+        except pytz.exceptions.UnknownTimeZoneError:
+            logger.warning(f"Invalid timezone '{timezone}', falling back to UTC")
+            tz = pytz.UTC
+        dt = dt.astimezone(tz)
+        return dt.strftime('%b %d, %Y at %I:%M %p %Z')
+    except Exception as e:
+        logger.error(f"Error formatting timestamp: {e}")
+        return iso_string
 
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
@@ -68,8 +84,6 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
         return
 
-    timezone = user_data['timezone']
-
     # CORRECTED Date filtering
     if days_back is not None and days_forward is not None:
         now = datetime.utcnow()
@@ -87,7 +101,7 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         filtered_entries = []
         for entry in entries:
-            entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', ''))
+            entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
             if start_date <= entry_date < end_date:
                 filtered_entries.append(entry)
 
@@ -109,35 +123,41 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Reverse to show newest first
     entries.reverse()
 
-    # Group entries by date for smart chunking
+    # Group entries by LOCAL date (not UTC)
     date_groups = []
-    current_date = None
+    current_local_date = None
     current_group = []
 
     for entry in entries:
-        entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '')).date()
-        if entry_date != current_date:
+        # Get the entry's timezone and convert to local date
+        entry_tz = pytz.timezone(entry.get('timezone', 'UTC'))
+        entry_local_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00')).astimezone(entry_tz)
+        entry_local_date = entry_local_time.date()
+
+        if entry_local_date != current_local_date:
             if current_group:
-                date_groups.append((current_date, current_group))
-            current_date = entry_date
+                date_groups.append((current_local_date, current_group))
+            current_local_date = entry_local_date
             current_group = []
         current_group.append(entry)
 
     if current_group:
-        date_groups.append((current_date, current_group))
+        date_groups.append((current_local_date, current_group))
 
     # Build messages with smart chunking
     messages = []
     current_message = f"📊 *History for {category}:*\n\n"
 
-    for i, (date, group_entries) in enumerate(date_groups):
+    for i, (local_date, group_entries) in enumerate(date_groups):
         group_text = ""
         if i > 0:
             group_text += '─────────────────\n'
 
         for entry in group_entries:
             tag = f"[{entry['category']}] " if 'category' in entry else ''
-            formatted_time = format_timestamp(entry['timestamp'], timezone)
+            # Use entry's own timezone for display
+            entry_timezone = entry.get('timezone', 'UTC')
+            formatted_time = format_timestamp(entry['timestamp'], entry_timezone)
             group_text += f"• {tag}{entry['value']} - {formatted_time}\n"
             if entry.get('note'):
                 group_text += f"  _{entry['note']}_\n"
@@ -154,22 +174,3 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Send all messages
     for message in messages:
         await update.effective_message.reply_text(message, parse_mode='Markdown')
-
-
-# Helper function for timestamp formatting (copied from main file)
-def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
-    """Format ISO timestamp to readable string"""
-    try:
-        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=pytz.UTC)
-        try:
-            tz = pytz.timezone(timezone)
-        except pytz.exceptions.UnknownTimeZoneError:
-            logger.warning(f"Invalid timezone '{timezone}', falling back to UTC")
-            tz = pytz.UTC
-        dt = dt.astimezone(tz)
-        return dt.strftime('%b %d, %Y at %I:%M %p %Z')
-    except Exception as e:
-        logger.error(f"Error formatting timestamp: {e}")
-        return iso_string
