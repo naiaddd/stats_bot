@@ -416,8 +416,6 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 
-
-
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
     if not context.args:
@@ -478,37 +476,57 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     timezone = user_data['timezone']
 
-    # Date filtering - DEBUGGING VERSION
+    # DEBUG: Let's see what's happening with the date filtering
     if days_back is not None and days_forward is not None:
         now = datetime.utcnow()
-        current_date = datetime(now.year, now.month, now.day)
+        logger.info(f"Current UTC time: {now}")
+        logger.info(f"Days back: {days_back}, Days forward: {days_forward}")
 
-        # Calculate date range
-        start_date = current_date - timedelta(days=days_back)
-        end_date = current_date - timedelta(days=days_forward) + timedelta(days=1)
+        # Current logic
+        start_date = datetime(now.year, now.month, now.day) - timedelta(days=days_back)
+        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward) + timedelta(days=1)
 
-        # Debug logging
-        logger.info(f"Date filtering: days_back={days_back}, days_forward={days_forward}")
-        logger.info(f"Current date: {current_date}")
         logger.info(f"Start date: {start_date}")
         logger.info(f"End date: {end_date}")
         logger.info(f"Total entries before filtering: {len(entries)}")
 
         filtered_entries = []
-        for entry in entries:
+        for i, entry in enumerate(entries):
             entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', ''))
-            if start_date <= entry_date < end_date:
+            is_in_range = start_date <= entry_date < end_date
+            logger.info(f"Entry {i}: {entry_date} - in_range: {is_in_range} - value: {entry['value']}")
+            if is_in_range:
                 filtered_entries.append(entry)
 
         logger.info(f"Entries after filtering: {len(filtered_entries)}")
         entries = filtered_entries
 
-    # If no entries after filtering, show message
-    if not entries:
-        await update.effective_message.reply_text(
-            f"ℹ️ No entries found for '{category}' in the specified date range.\n"
-            f"Try without date filters to see all entries."
+    # If no entries after filtering, show debug info
+    if not entries and days_back is not None and days_forward is not None:
+        # Send debug info to help diagnose
+        now = datetime.utcnow()
+        start_date = datetime(now.year, now.month, now.day) - timedelta(days=days_back)
+        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward) + timedelta(days=1)
+
+        # Get sample of recent entries to show their dates
+        sample_entries = user_data['stats'][category]['entries'][-5:] if category in user_data['stats'] else []
+        sample_dates = [datetime.fromisoformat(e['timestamp'].replace('Z', '')).strftime('%Y-%m-%d %H:%M') for e in sample_entries]
+
+        debug_info = (
+            f"🔍 *Debug Info for {category}:*\n"
+            f"Current UTC: {now}\n"
+            f"Date range: {start_date} to {end_date}\n"
+            f"Days: -{days_back}:{days_forward}\n"
+            f"Total entries available: {len(user_data['stats'][category]['entries'])}\n"
+            f"Recent entry dates: {', '.join(sample_dates)}\n"
+            f"Try: /history {category} (without date filter)"
         )
+        await update.effective_message.reply_text(debug_info, parse_mode='Markdown')
+        return
+
+    # If no entries at all (even without filtering)
+    if not entries:
+        await update.effective_message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
         return
 
     # Reverse to show newest first
@@ -559,9 +577,6 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Send all messages
     for message in messages:
         await update.effective_message.reply_text(message, parse_mode='Markdown')
-
-
-
 
 
 
