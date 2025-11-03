@@ -673,9 +673,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 
-
 async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Manual migration command for entries before November 1, 2025 with detailed error logging"""
+    """Manual migration command for entries before November 1, 2025 with timezone-aware comparison"""
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
 
@@ -696,11 +695,11 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         migrated_count = 0
         error_count = 0
         category_report = []
-        detailed_errors = []  # Track specific errors for debugging
+        detailed_errors = []
 
-        # Fixed cutoff: November 1, 2025
-        cutoff_time = datetime(2025, 11, 1, 12, 0, 0)
-        logger.info(f"Migration cutoff time: {cutoff_time}")
+        # FIX: Make cutoff time timezone-aware (UTC)
+        cutoff_time = datetime(2025, 11, 1, 12, 0, 0, tzinfo=pytz.UTC)
+        logger.info(f"Migration cutoff time (UTC): {cutoff_time}")
 
         for category_name, category_data in user_data['stats'].items():
             category_migrated = 0
@@ -708,18 +707,21 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             for i, entry in enumerate(category_data['entries']):
                 try:
-                    # Parse the timestamp with detailed error context
                     timestamp_str = entry['timestamp']
                     logger.info(f"Processing entry {i} in {category_name}: {timestamp_str}")
 
+                    # Parse timestamp (already UTC-aware from the Z suffix)
                     if timestamp_str.endswith('Z'):
-                        entry_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        entry_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00')).replace(tzinfo=pytz.UTC)
                     else:
                         entry_time = datetime.fromisoformat(timestamp_str)
+                        # Ensure it's timezone-aware
+                        if entry_time.tzinfo is None:
+                            entry_time = entry_time.replace(tzinfo=pytz.UTC)
 
-                    logger.info(f"Parsed timestamp: {entry_time}")
+                    logger.info(f"Parsed timestamp (UTC): {entry_time}")
 
-                    # Check if entry is before cutoff
+                    # FIX: Now both times are timezone-aware, comparison should work
                     is_before_cutoff = entry_time < cutoff_time
                     logger.info(f"Before cutoff {cutoff_time}? {is_before_cutoff}")
 
@@ -728,10 +730,7 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         logger.info(f"Entry qualifies for migration")
 
                         if not dry_run:
-                            # Perform the migration to HCMC timezone
                             entry['timezone'] = 'Asia/Ho_Chi_Minh'
-
-                            # Convert timestamp to HCMC timezone for storage
                             hcmc_tz = pytz.timezone('Asia/Ho_Chi_Minh')
                             entry_local_time = entry_time.astimezone(hcmc_tz)
                             entry['timestamp'] = entry_local_time.isoformat()
@@ -751,7 +750,6 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             migrated_count += category_migrated
 
-        # Save changes if not dry-run and we have migrations
         if not dry_run and migrated_count > 0:
             await db.set_user(user_id, user_data)
             logger.info(f"Saved {migrated_count} migrated entries for user {user_id}")
@@ -771,7 +769,6 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             report_lines.append("\n*Category Breakdown:*")
             report_lines.extend(category_report)
 
-        # Add sample of detailed errors for debugging
         if detailed_errors and len(detailed_errors) > 0:
             report_lines.append(f"\n*Sample errors ({min(3, len(detailed_errors))} of {len(detailed_errors)}):*")
             for error in detailed_errors[:3]:
@@ -791,8 +788,6 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"❌ Migration failed: {str(e)}\n"
             "Check logs for details."
         )
-
-
 
 
 
