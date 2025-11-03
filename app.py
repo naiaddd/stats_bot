@@ -493,8 +493,8 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 filtered_entries.append(entry)
         entries = filtered_entries
 # Build response
-        response = f"📊 *History for {category}:*\n\n"
-        last_date = None
+response = f"📊 *History for {category}:*\n\n"
+last_date = None
 
 
 '''
