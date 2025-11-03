@@ -420,15 +420,15 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 
-
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
     if not context.args:
         await update.effective_message.reply_text(
-            "Usage: /history <category_or_group> [-days:days]\n"
+            "Usage: /history <category_or_group> [-days_back:days_forward]\n"
             "Example: /history weight\n"
-            "Example: /history weight -7:0 (last 7 days)\n"
-            "Example: /history workout_group -30:-7 (4 weeks ago to 1 week ago)"
+            "Example: /history weight -7:0 (last 7 days, excluding today)\n"
+            "Example: /history weight -7:1 (last 7 days, including today)\n"
+            "Example: /history workout_group -30:-7 (from 30 days ago to 7 days ago)"
         )
         return
 
@@ -447,10 +447,10 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
-    
+
     user_data = await db.get_user(user_id)
     if not user_data['stats'] and not user_data['groups']:
-        await update.effectuve_message.reply_text("You don't have any stats or groups yet!")
+        await update.effective_message.reply_text("You don't have any stats or groups yet!")
         return
 
     entries = []
@@ -484,26 +484,21 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if days_back is not None and days_forward is not None:
         now = datetime.utcnow()
         start_date = datetime(now.year, now.month, now.day) - timedelta(days=abs(days_back))
-        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward)
-        
+        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward) + timedelta(days=1)
+
         filtered_entries = []
         for entry in entries:
             entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', ''))
-            if start_date <= entry_date <= end_date:
+            if start_date <= entry_date < end_date:
                 filtered_entries.append(entry)
         entries = filtered_entries
 
+    # Reverse to show newest first (maintains original behavior without 10-entry limit)
+    entries.reverse()
 
     # Build response
     response = f"📊 *History for {category}:*\n\n"
     last_date = None
-
-
-    # Get last 10 entries
-#    entries = entries[-10:]
-#    entries.reverse()
-
-
 
     for entry in entries:
         entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '')).date()
@@ -518,8 +513,6 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             response += f"  _{entry['note']}_\n"
 
     await update.effective_message.reply_text(response, parse_mode='Markdown')
-
-
 
 
 
