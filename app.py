@@ -19,17 +19,22 @@ import pytz
 
 
 
-'''
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-'''
 
-# Simplified logging
 logging.getLogger(__name__).setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #timestamp Helper function 
@@ -48,6 +53,18 @@ def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     except Exception as e:
         logger.error(f"Error formatting timestamp: {e}")
         return iso_string
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -145,6 +162,21 @@ class FirestoreDB:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Helper functions
 def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     """Format ISO timestamp to readable string"""
@@ -156,6 +188,20 @@ def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     except Exception as e:
         logger.error(f"Error formatting timestamp: {e}")
         return iso_string
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -180,6 +226,23 @@ Track any metric across all your devices:
 /help - Show this message"""
 
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /new command"""
@@ -212,6 +275,21 @@ async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Use /add {category} <value> to log entries!",
         parse_mode='Markdown'
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /add command"""
@@ -262,6 +340,22 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /view command"""
     user_id = str(update.effective_user.id)
@@ -305,6 +399,22 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode='Markdown',
         reply_markup=keyboard
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -410,6 +520,23 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /delete command"""
     if not context.args:
@@ -440,6 +567,24 @@ async def handle_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     else:
         await update.message.reply_text(f"❌ Category or group '{target}' not found")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -490,6 +635,26 @@ async def handle_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /group command"""
     if len(context.args) < 2:
@@ -528,6 +693,33 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Contains: {', '.join(categories)}",
         parse_mode='Markdown'
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -619,6 +811,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def create_application():
     """Create and configure the Telegram Bot Application"""
     token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -649,8 +868,39 @@ def create_application():
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Global application instance
 telegram_app: Optional[Application] = None
+
+
+
+
 
 # Lifespan context manager for FastAPI
 @asynccontextmanager
@@ -677,8 +927,19 @@ async def lifespan(app: FastAPI):
             await telegram_app.bot_data['db'].close()
     logger.info("Telegram application stopped")
 
+
+
+
+
+
+
 # Initialize FastAPI app
 app = FastAPI(title="Telegram Stats Tracker Bot", lifespan=lifespan)
+
+
+
+
+
 
 # Webhook endpoint
 @app.post("/webhook")
@@ -699,6 +960,14 @@ async def webhook(request: Request):
         logger.error(f"Webhook error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
+
+
+
+
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -709,6 +978,10 @@ async def health_check():
         'timestamp': datetime.utcnow().isoformat()
     })
 
+
+
+
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -717,6 +990,13 @@ async def root():
         'status': 'Telegram Stats Bot is running!',
         'timestamp': datetime.utcnow().isoformat()
     })
+
+
+
+
+
+
+
 
 # Optional: Endpoint to set webhook (call this once after deployment)
 @app.post("/set-webhook")
@@ -734,5 +1014,8 @@ async def set_webhook(webhook_url: str):
     except Exception as e:
         logger.error(f"Set webhook error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 # Run with: uvicorn main:app --host 0.0.0.0 --port 8000
