@@ -418,7 +418,6 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 
-
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
     if not context.args:
@@ -479,18 +478,38 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     timezone = user_data['timezone']
 
-    # Date filtering
+    # Date filtering - DEBUGGING VERSION
     if days_back is not None and days_forward is not None:
         now = datetime.utcnow()
-        start_date = datetime(now.year, now.month, now.day) - timedelta(days=days_back)
-        end_date = datetime(now.year, now.month, now.day) - timedelta(days=days_forward) + timedelta(days=1)
+        current_date = datetime(now.year, now.month, now.day)
+
+        # Calculate date range
+        start_date = current_date - timedelta(days=days_back)
+        end_date = current_date - timedelta(days=days_forward) + timedelta(days=1)
+
+        # Debug logging
+        logger.info(f"Date filtering: days_back={days_back}, days_forward={days_forward}")
+        logger.info(f"Current date: {current_date}")
+        logger.info(f"Start date: {start_date}")
+        logger.info(f"End date: {end_date}")
+        logger.info(f"Total entries before filtering: {len(entries)}")
 
         filtered_entries = []
         for entry in entries:
             entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', ''))
             if start_date <= entry_date < end_date:
                 filtered_entries.append(entry)
+
+        logger.info(f"Entries after filtering: {len(filtered_entries)}")
         entries = filtered_entries
+
+    # If no entries after filtering, show message
+    if not entries:
+        await update.effective_message.reply_text(
+            f"ℹ️ No entries found for '{category}' in the specified date range.\n"
+            f"Try without date filters to see all entries."
+        )
+        return
 
     # Reverse to show newest first
     entries.reverse()
@@ -512,14 +531,13 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if current_group:
         date_groups.append((current_date, current_group))
 
-    # Build messages with smart chunking (preserve date groups)
+    # Build messages with smart chunking
     messages = []
     current_message = f"📊 *History for {category}:*\n\n"
 
     for i, (date, group_entries) in enumerate(date_groups):
-        # Calculate what this group would add to the message
         group_text = ""
-        if i > 0:  # Add separator for all but first group
+        if i > 0:
             group_text += '─────────────────\n'
 
         for entry in group_entries:
@@ -529,21 +547,18 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if entry.get('note'):
                 group_text += f"  _{entry['note']}_\n"
 
-        # If adding this group would exceed ~3500 chars, send current message and start new one
         if len(current_message + group_text) > 3500 and current_message.strip():
             messages.append(current_message)
-            current_message = ""  # Continue seamlessly without header
+            current_message = ""
 
         current_message += group_text
 
-    # Add the final message
     if current_message.strip():
         messages.append(current_message)
 
     # Send all messages
     for message in messages:
         await update.effective_message.reply_text(message, parse_mode='Markdown')
-
 
 
 
