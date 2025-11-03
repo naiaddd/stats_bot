@@ -674,11 +674,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 
-
-
-
 async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Manual migration command for entries before November 1, 2025"""
+    """Manual migration command for entries before November 1, 2025 with detailed error logging"""
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
 
@@ -699,6 +696,7 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         migrated_count = 0
         error_count = 0
         category_report = []
+        detailed_errors = []  # Track specific errors for debugging
 
         # Fixed cutoff: November 1, 2025
         cutoff_time = datetime(2025, 11, 1, 12, 0, 0)
@@ -710,20 +708,24 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             for i, entry in enumerate(category_data['entries']):
                 try:
-                    # Parse the timestamp
+                    # Parse the timestamp with detailed error context
                     timestamp_str = entry['timestamp']
+                    logger.info(f"Processing entry {i} in {category_name}: {timestamp_str}")
+
                     if timestamp_str.endswith('Z'):
                         entry_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                     else:
                         entry_time = datetime.fromisoformat(timestamp_str)
 
-                    # DEBUG: Log some entries to see what's happening
-                    if i < 3:  # Log first 3 entries for debugging
-                        logger.info(f"Entry {i} time: {entry_time}, cutoff: {cutoff_time}, before_cutoff: {entry_time < cutoff_time}")
+                    logger.info(f"Parsed timestamp: {entry_time}")
 
-                    # Migrate entries before November 1, 2025
-                    if entry_time < cutoff_time:
+                    # Check if entry is before cutoff
+                    is_before_cutoff = entry_time < cutoff_time
+                    logger.info(f"Before cutoff {cutoff_time}? {is_before_cutoff}")
+
+                    if is_before_cutoff:
                         category_migrated += 1
+                        logger.info(f"Entry qualifies for migration")
 
                         if not dry_run:
                             # Perform the migration to HCMC timezone
@@ -733,9 +735,12 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                             hcmc_tz = pytz.timezone('Asia/Ho_Chi_Minh')
                             entry_local_time = entry_time.astimezone(hcmc_tz)
                             entry['timestamp'] = entry_local_time.isoformat()
+                            logger.info(f"Migrated to: {entry['timestamp']}")
 
                 except Exception as e:
-                    logger.error(f"Error migrating entry {i} in category {category_name}: {e}")
+                    error_msg = f"Category '{category_name}', entry {i}, timestamp '{entry.get('timestamp', 'MISSING')}': {str(e)}"
+                    logger.error(error_msg)
+                    detailed_errors.append(error_msg)
                     category_errors += 1
                     error_count += 1
 
@@ -766,6 +771,12 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             report_lines.append("\n*Category Breakdown:*")
             report_lines.extend(category_report)
 
+        # Add sample of detailed errors for debugging
+        if detailed_errors and len(detailed_errors) > 0:
+            report_lines.append(f"\n*Sample errors ({min(3, len(detailed_errors))} of {len(detailed_errors)}):*")
+            for error in detailed_errors[:3]:
+                report_lines.append(f"• {error}")
+
         if migrated_count == 0 and error_count == 0:
             report_lines.append("\n✅ No entries found before November 1, 2025")
         elif dry_run and migrated_count > 0:
@@ -780,7 +791,6 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"❌ Migration failed: {str(e)}\n"
             "Check logs for details."
         )
-
 
 
 
