@@ -745,7 +745,7 @@ async def handle_migrate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     migrated_count = 0
 
     # Migration cutoff: Nov 1, 2024 12:00 UTC
-    cutoff_time = datetime(2024, 11, 1, 12, 0, 0)
+    cutoff_time = datetime(2025, 11, 1, 12, 0, 0)
 
     for category_name, category_data in user_data['stats'].items():
         for entry in category_data['entries']:
