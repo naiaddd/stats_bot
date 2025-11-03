@@ -718,6 +718,7 @@ def create_application():
     application.add_handler(CommandHandler("delete", handle_delete))
     application.add_handler(CommandHandler("timezone", handle_timezone))
     application.add_handler(CommandHandler("group", handle_group))
+    application.add_handler(CommandHandler("migrate", handle_migrate))
     application.add_handler(CallbackQueryHandler(handle_callback))
     
     return application
