@@ -493,9 +493,16 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 filtered_entries.append(entry)
         entries = filtered_entries
 
-    # Get last 10 entries
+
+
+
+
+'''    # Get entries
     entries = entries[-10:]
     entries.reverse()
+'''
+
+
 
     # Build response
     response = f"📊 *History for {category}:*\n\n"
