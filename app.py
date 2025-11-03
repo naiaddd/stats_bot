@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 import pytz
 from history_handlers import handle_history, format_timestamp
 
@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 
-
-
-
-
+async def handle_unrecognized_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle unrecognized commands"""
+    command = update.message.text.split()[0]  # Get the command including "/"
+    await update.message.reply_text(f"Unrecognised command {command}")
 
 
 
@@ -830,6 +830,7 @@ def create_application():
     application.add_handler(CommandHandler("timezone", handle_timezone))
     application.add_handler(CommandHandler("group", handle_group))
     application.add_handler(CommandHandler("migrate", handle_migrate))
+    application.add_handler(MessageHandler(filters.COMMAND, handle_unrecognized_command))
     application.add_handler(CallbackQueryHandler(handle_callback))
     
     return application
