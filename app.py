@@ -492,16 +492,16 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if start_date <= entry_date <= end_date:
                 filtered_entries.append(entry)
         entries = filtered_entries
-# Build response
-response = f"📊 *History for {category}:*\n\n"
-last_date = None
 
 
-'''
+    # Build response
+    response = f"📊 *History for {category}:*\n\n"
+    last_date = None
+
+
     # Get last 10 entries
-    entries = entries[-10:]
-    entries.reverse()
-'''
+#    entries = entries[-10:]
+#    entries.reverse()
 
 
 
