@@ -576,39 +576,39 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             deleted_count = 0
             entries_modified = False
 
-        for storage_idx in storage_indices:
-            if 0 <= storage_idx < len(entries):
-                if delete_flag == '-s':
-                    entries[storage_idx]['is_deleted'] = True
-                    entries_modified = True
-                    deleted_count += 1
-                else:  # -h
-                    # Hard delete - create new list excluding the indices to delete
-                    entries_to_keep = []
-                    for i, entry in enumerate(entries):
-                        if i not in storage_indices:
-                            entries_to_keep.append(entry)
-                        else:
-                            entries_modified = True
-                            deleted_count += 1
-                    # Replace the entries list with the filtered list
-                    user_data['stats'][category]['entries'] = entries_to_keep
+            for storage_idx in storage_indices:
+                if 0 <= storage_idx < len(entries):
+                    if delete_flag == '-s':
+                        entries[storage_idx]['is_deleted'] = True
+                        entries_modified = True
+                        deleted_count += 1
+                    else:  # -h
+                        # Hard delete - create new list excluding the indices to delete
+                        entries_to_keep = []
+                        for i, entry in enumerate(entries):
+                            if i not in storage_indices:
+                                entries_to_keep.append(entry)
+                            else:
+                                entries_modified = True
+                                deleted_count += 1
+                        # Replace the entries list with the filtered list
+                        user_data['stats'][category]['entries'] = entries_to_keep
 
 
-            if entries_modified:
-                await db.set_user(user_id, user_data)
+                if entries_modified:
+                    await db.set_user(user_id, user_data)
 
-                if delete_flag == '-s':
-                    await query.edit_message_text(
-                        f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
-                        f"Use `/history_f {category}` to view or recover deleted entries."
-                    )
+                    if delete_flag == '-s':
+                        await query.edit_message_text(
+                            f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
+                            f"Use `/history_f {category}` to view or recover deleted entries."
+                        )
+                    else:
+                        await query.edit_message_text(
+                            f"💥 {deleted_count} entries permanently deleted from '{category}'."
+                        )
                 else:
-                    await query.edit_message_text(
-                        f"💥 {deleted_count} entries permanently deleted from '{category}'."
-                    )
-            else:
-                await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
+                    await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
 
 
         except Exception as e:
