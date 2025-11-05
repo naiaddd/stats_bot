@@ -546,6 +546,7 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
 
     data = query.data
+    logger.info(f"DELETE CALLBACK RECEIVED: {data}")
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
 
@@ -570,14 +571,13 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             deleted_count = 0
             entries_modified = False
 
-            for storage_idx in storage_indices:
-                if 0 <= storage_idx < len(entries):
-                    if delete_flag == '-s':
-                        for storage_idx in storage_indices:
-                                if 0 <= storage_idx < len(entries):
-                                    entries[storage_idx]['is_deleted'] = True
-                                    entries_modified = True
-                                    deleted_count += 1
+            if 0 <= storage_idx < len(entries):
+                if delete_flag == '-s':
+                    for storage_idx in storage_indices:
+                            if 0 <= storage_idx < len(entries):
+                                entries[storage_idx]['is_deleted'] = True
+                                entries_modified = True
+                                deleted_count += 1
                     else:  # -h
                         # Hard delete - create new list excluding the indices to delete
                         entries_to_keep = []

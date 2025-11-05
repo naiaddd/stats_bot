@@ -851,7 +851,9 @@ def create_application():
 
     application.add_handler(MessageHandler(filters.COMMAND, handle_unrecognized_command))
     application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_.*|cancel_delete)$"))
+    application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern=".*"))
+
+    #application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_.*|cancel_delete)$"))
     application.add_handler(CallbackQueryHandler(handle_recover_callback, pattern="^recover_.*"))
     
     return application
