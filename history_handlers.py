@@ -411,9 +411,11 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
             display_index = idx - 1  # Convert to 0-based
             target_entry = active_entries[display_index]
             # Find the original index in the main entries list
-            storage_index = next(i for i, entry in enumerate(entries)
-                            if entry.get('timestamp') == target_entry.get('timestamp')
-                            and entry.get('value') == target_entry.get('value'))
+            storage_index = next(
+                i for i, entry in enumerate(entries)
+                if entry.get('timestamp') == target_entry.get('timestamp')
+                and entry.get('value') == target_entry.get('value')
+                )
 
             entries_to_delete.append({
                 'index': storage_index,
