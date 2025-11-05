@@ -428,7 +428,7 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
 
 
         await update.message.reply_text(
-            "❌ Error parsing command. Use:\n"
+            "Error parsing command. Use:\n"
             "`/r <category> <indices> -s` for soft delete\n"
             "`/r <category> <indices> -h` for hard delete\n\n"
             "Supported formats:\n"
@@ -580,17 +580,17 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
                     entries[storage_idx]['is_deleted'] = True
                     entries_modified = True
                     deleted_count += 1
-                    else:  # -h
-                        # Hard delete - create new list excluding the indices to delete
-                        entries_to_keep = []
-                        for i, entry in enumerate(entries):
-                            if i not in storage_indices:
-                                entries_to_keep.append(entry)
-                            else:
-                                entries_modified = True
-                                deleted_count += 1
-                        # Replace the entries list with the filtered list
-                        user_data['stats'][category]['entries'] = entries_to_keep
+                else:  # -h
+                    # Hard delete - create new list excluding the indices to delete
+                    entries_to_keep = []
+                    for i, entry in enumerate(entries):
+                        if i not in storage_indices:
+                            entries_to_keep.append(entry)
+                        else:
+                            entries_modified = True
+                            deleted_count += 1
+                    # Replace the entries list with the filtered list
+                    user_data['stats'][category]['entries'] = entries_to_keep
 
 
             if entries_modified:
