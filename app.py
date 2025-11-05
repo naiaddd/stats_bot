@@ -577,23 +577,6 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle callback queries from inline keyboards"""
     query = update.callback_query

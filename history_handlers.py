@@ -258,20 +258,20 @@ async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Show usage help if no arguments
     if not context.args:
-        help_text = (
-            "🗑️ *Entry Deletion Commands:*\n\n"
-            "`/r <category>` - Show entries with indices\n"
-            "`/r <category> <indices> -s` - Soft delete (recoverable)\n"
-            "`/r <category> <indices> -h` - Hard delete (permanent)\n\n"
-            "*Supported formats:*\n"
-            "`/r weight 1,2 -s` - Delete entries 1 & 2\n"
-            "`/r weight 1, 2 -s` - Delete entries 1 & 2\n"
-            "`/r weight 1-3 -h` - Delete entries 1,2,3\n"
-            "`/r weight 1-3,5 -s` - Delete entries 1,2,3,5\n\n"
-            "Use `/history_f <category>` to view and recover deleted entries."
-        )
-        await update.message.reply_text(help_text, parse_mode='Markdown')
-        return
+            help_text = (
+                "🗑️ Entry Deletion Commands:\n\n"
+                "/r <category> - Show entries with indices\n"
+                "/r <category> <indices> -s - Soft delete (recoverable)\n"
+                "/r <category> <indices> -h - Hard delete (permanent)\n\n"
+                "Supported formats:\n"
+                "/r weight 1,2 -s - Delete entries 1 & 2\n"
+                "/r weight 1, 2 -s - Delete entries 1 & 2\n"
+                "/r weight 1-3 -h - Delete entries 1,2,3\n"
+                "/r weight 1-3,5 -s - Delete entries 1,2,3,5\n\n"
+                "Use /history_f <category> to view and recover deleted entries."
+            )
+            await update.message.reply_text(help_text)  # Remove parse_mode='Markdown'
+            return
 
     category = context.args[0].lower()
 
@@ -506,7 +506,6 @@ async def _parse_indices(indices_str: str, entries: List[Dict]) -> List[int]:
 
 
 
-
 async def _show_deletion_confirmation(update: Update, category: str,
                                     entries_to_delete: List[Dict], delete_flag: str) -> None:
     """Show confirmation message with inline keyboard"""
@@ -524,9 +523,9 @@ async def _show_deletion_confirmation(update: Update, category: str,
         message += "\n"
 
     if delete_flag == '-s':
-        message += "\n_Soft deleted entries can be recovered with /history_f_"
+        message += "\nSoft deleted entries can be recovered with /history_f"
     else:
-        message += "\n_⚠️ Hard deletion is PERMANENT and cannot be undone_"
+        message += "\n⚠️ Hard deletion is PERMANENT and cannot be undone"
 
     # Create confirmation keyboard
     keyboard = [
@@ -542,7 +541,24 @@ async def _show_deletion_confirmation(update: Update, category: str,
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(message, reply_markup=reply_markup)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Add this to the callback handler section
 async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
