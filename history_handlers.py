@@ -425,6 +425,8 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
 
     except Exception as e:
         logger.error(f"Error parsing deletion command: {e}")
+
+
         await update.message.reply_text(
             "❌ Error parsing command. Use:\n"
             "`/r <category> <indices> -s` for soft delete\n"
@@ -434,6 +436,7 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
             "• `/r test 1, 2 -s`\n"
             "• `/r test 1-5 -h`\n"
             "• `/r test 1-3,5 -s`"
+            parse_mode=None
         )
 
 
@@ -571,13 +574,12 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             deleted_count = 0
             entries_modified = False
 
+        for storage_idx in storage_indices:
             if 0 <= storage_idx < len(entries):
                 if delete_flag == '-s':
-                    for storage_idx in storage_indices:
-                            if 0 <= storage_idx < len(entries):
-                                entries[storage_idx]['is_deleted'] = True
-                                entries_modified = True
-                                deleted_count += 1
+                    entries[storage_idx]['is_deleted'] = True
+                    entries_modified = True
+                    deleted_count += 1
                     else:  # -h
                         # Hard delete - create new list excluding the indices to delete
                         entries_to_keep = []
@@ -606,11 +608,12 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             else:
                 await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
 
+
         except Exception as e:
             logger.error(f"Error processing deletion callback: {e}")
+            logger.error(f"Callback data: {data}")
+            logger.error(f"Parsed parts: category={category}, flag={delete_flag}, indices={storage_indices}")
             await query.edit_message_text("❌ Error processing deletion. Please try again.")
-
-
 
 
 
