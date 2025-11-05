@@ -1,7 +1,4 @@
-
-
-
-
+# Real Linecount : 584 as of 2025-11-03 23:23:35
 
 """
 Telegram Stats Tracker Bot - FastAPI Version
@@ -20,9 +17,10 @@ from fastapi.responses import JSONResponse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 import pytz
-from history_handlers import handle_history, format_timestamp
 
-
+'''from history_handlers import handle_history, format_timestamp, handle_r, handle_delete_callback, handle_recover_callback, handle_history_f
+'''
+from history_handlers import *
 
 
 logging.getLogger(__name__).setLevel(logging.INFO)
@@ -190,8 +188,10 @@ Track any metric across all your devices:
 /add - Add an entry to a stat
 /view - View your stats
 /history - See stat history
+/history-f - See soft deletes
 /group - Add category groups
 /delete - Delete a category
+/r - Delete entries
 /timezone - Set your timezone
 /help - Show this message"""
 
@@ -831,12 +831,18 @@ def create_application():
     application.add_handler(CommandHandler("add", handle_add))
     application.add_handler(CommandHandler("view", handle_view))
     application.add_handler(CommandHandler("history", handle_history))
+    application.add_handler(CommandHandler("history-f", handle_history_f))
+
+    application.add_handler(CommandHandler("r", handle_r))
     application.add_handler(CommandHandler("delete", handle_delete))
     application.add_handler(CommandHandler("timezone", handle_timezone))
     application.add_handler(CommandHandler("group", handle_group))
     application.add_handler(CommandHandler("migrate", handle_migrate))
+
     application.add_handler(MessageHandler(filters.COMMAND, handle_unrecognized_command))
     application.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_.*|cancel_delete)$"))
+    application.add_handler(CallbackQueryHandler(handle_recover_callback, pattern="^recover_.*"))
     
     return application
 

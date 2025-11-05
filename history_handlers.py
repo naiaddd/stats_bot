@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 import pytz
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,21 @@ def format_timestamp(iso_string: str, timezone: str = 'UTC') -> str:
     except Exception as e:
         logger.error(f"Error formatting timestamp: {e}")
         return iso_string
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /history command"""
@@ -79,6 +94,9 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         await update.effective_message.reply_text(f"❌ No category or group named '{category}'")
         return
+
+    entries = [entry for entry in entries if not entry.get('is_deleted', False)]
+
 
     if not entries:
         await update.effective_message.reply_text(f"ℹ️ No entries recorded for '{category}' yet.")
@@ -139,12 +157,10 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 logger.warning(f"Invalid timestamp format for entry: {entry.get('timestamp')} - {e}")
                 continue
 
+
+
+
         entries = filtered_entries
-
-
-
-
-
 
 
 
@@ -216,3 +232,444 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Send all messages
     for message in messages:
         await update.effective_message.reply_text(message, parse_mode='Markdown')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Add to history_handlers.py or in app.py
+
+async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /r command for entry deletion"""
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    # Show usage help if no arguments
+    if not context.args:
+        help_text = (
+            "🗑️ *Entry Deletion Commands:*\n\n"
+            "`/r <category>` - Show entries with indices\n"
+            "`/r <category> <indices> -s` - Soft delete (recoverable)\n"
+            "`/r <category> <indices> -h` - Hard delete (permanent)\n\n"
+            "*Examples:*\n"
+            "`/r weight` - Show weight entries\n"
+            "`/r weight 2 -s` - Soft delete entry #2\n"
+            "`/r weight 1,3-5 -h` - Hard delete entries 1,3,4,5\n\n"
+            "Use `/history-f <category>` to view and recover deleted entries."
+        )
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+        return
+
+    category = context.args[0].lower()
+
+    # Get user data
+    user_data = await db.get_user(user_id)
+
+    # Validate category exists
+    if category not in user_data.get('stats', {}):
+        await update.message.reply_text(f"❌ Category '{category}' not found.")
+        return
+
+    entries = user_data['stats'][category]['entries']
+
+    # Show entries with indices if no deletion flags
+    if len(context.args) == 1 or (len(context.args) == 2 and context.args[1] not in ['-s', '-h']):
+        await _show_entries_with_indices(update, category, entries)
+        return
+
+    # Parse deletion command
+    await _handle_deletion_command(update, context, user_data, category, entries, user_id, db)
+
+async def _show_entries_with_indices(update: Update, category: str, entries: List[Dict]) -> None:
+    """Show entries with their current indices"""
+    if not entries:
+        await update.message.reply_text(f"ℹ️ No entries found for '{category}'.")
+        return
+
+    # Filter out deleted entries for display
+    active_entries = [entry for entry in entries if not entry.get('is_deleted', False)]
+
+    if not active_entries:
+        await update.message.reply_text(
+            f"ℹ️ No active entries found for '{category}'.\n"
+            f"Use `/history-f {category}` to view deleted entries."
+        )
+        return
+
+    # Reverse to show newest first
+    active_entries.reverse()
+
+    message = f"📋 Current entries for '{category}' (newest first):\n\n"
+
+    for i, entry in enumerate(active_entries, 1):
+        formatted_time = format_timestamp(entry['timestamp'], entry.get('timezone', 'UTC'))
+        message += f"{i}. {entry['value']} - {formatted_time}"
+        if entry.get('note'):
+            message += f" - {entry['note']}"
+        message += "\n"
+
+    message += "\nEnter: `/r <category> <indices> -s`\n"
+    message += "*Examples:*\n"
+    message += "`/r {category} 2 -s` - Soft delete entry #2\n"
+    message += "`/r {category} 1,3 -s` - Soft delete entries 1 & 3\n"
+    message += "`/r {category} 1-3 -s` - Soft delete entries 1,2,3\n"
+    message += "`/r {category} 2 -h` - Hard delete entry #2"
+
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                 user_data: Dict, category: str, entries: List[Dict],
+                                 user_id: str, db) -> None:
+    """Handle the actual deletion command with indices and flags"""
+    try:
+        # Parse indices and flag
+        indices_str = context.args[1]
+        delete_flag = context.args[2] if len(context.args) > 2 else None
+
+        if not delete_flag or delete_flag not in ['-s', '-h']:
+            await update.message.reply_text(
+                "❌ Missing deletion flag. Use `-s` for soft delete or `-h` for hard delete.\n"
+                "Example: `/r {category} {indices_str} -s`"
+            )
+            return
+
+        # Parse indices (support for single, multiple, and ranges)
+        target_indices = await _parse_indices(indices_str, entries)
+
+        if not target_indices:
+            await update.message.reply_text(
+                "❌ Invalid indices format. Use:\n"
+                "• Single: `2`\n"
+                "• Multiple: `1,3,5`\n"
+                "• Range: `1-5`\n"
+                "• Mixed: `1,3-5,7`"
+            )
+            return
+
+        # Validate indices are within range
+        active_entries = [entry for entry in entries if not entry.get('is_deleted', False)]
+        active_entries.reverse()  # Newest first for index matching
+
+        max_index = len(active_entries)
+        invalid_indices = [idx for idx in target_indices if idx < 1 or idx > max_index]
+
+        if invalid_indices:
+            await update.message.reply_text(
+                f"❌ Invalid indices: {invalid_indices}\n"
+                f"Valid range: 1-{max_index}\n"
+                f"Use `/r {category}` to see current indices."
+            )
+            return
+
+        # Get the actual entries to delete
+        entries_to_delete = []
+        for idx in target_indices:
+            # Convert display index (1-based, newest first) to storage index
+            display_index = idx - 1  # Convert to 0-based
+            target_entry = active_entries[display_index]
+            # Find the original index in the main entries list
+            storage_index = next(i for i, entry in enumerate(entries)
+                            if entry.get('timestamp') == target_entry.get('timestamp')
+                            and entry.get('value') == target_entry.get('value'))
+
+            entries_to_delete.append({
+                'index': storage_index,
+                'entry': target_entry
+            })
+        # Show confirmation
+        await _show_deletion_confirmation(update, category, entries_to_delete, delete_flag)
+
+    except Exception as e:
+        logger.error(f"Error parsing deletion command: {e}")
+        await update.message.reply_text(
+            "❌ Error parsing command. Use:\n"
+            "`/r <category> <indices> -s` for soft delete\n"
+            "`/r <category> <indices> -h` for hard delete"
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async def _parse_indices(indices_str: str, entries: List[Dict]) -> List[int]:
+    """Parse indices string into list of integers"""
+    if not indices_str or not indices_str.strip():
+        return []
+
+    try:
+        indices = set()
+        parts = indices_str.split(',')
+
+        for part in parts:
+            part = part.strip()
+            if '-' in part:
+                # Range like 1-5
+                start, end = map(int, part.split('-'))
+                indices.update(range(start, end + 1))
+            else:
+                # Single number
+                indices.add(int(part))
+
+        return sorted(list(indices))
+    except (ValueError, AttributeError):
+        return []
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async def _show_deletion_confirmation(update: Update, category: str,
+                                    entries_to_delete: List[Dict], delete_flag: str) -> None:
+    """Show confirmation message with inline keyboard"""
+    delete_type = "soft" if delete_flag == '-s' else "hard"
+    emoji = "🗑️" if delete_flag == '-s' else "💥"
+
+    message = f"{emoji} {delete_type.capitalize()} delete these {len(entries_to_delete)} entries from '{category}'?\n\n"
+
+    for item in entries_to_delete:
+        entry = item['entry']
+        formatted_time = format_timestamp(entry['timestamp'], entry.get('timezone', 'UTC'))
+        message += f"• {entry['value']} - {formatted_time}"
+        if entry.get('note'):
+            message += f" - {entry['note']}"
+        message += "\n"
+
+    if delete_flag == '-s':
+        message += "\n_Soft deleted entries can be recovered with /history-f_"
+    else:
+        message += "\n_⚠️ Hard deletion is PERMANENT and cannot be undone_"
+
+    # Create confirmation keyboard
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"✅ Confirm {delete_type.capitalize()} Delete",
+                callback_data=f"confirm_delete_{category}_{delete_flag}_{','.join(str(item['index']) for item in entries_to_delete)}"
+            )
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel_delete")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+
+# Add this to the callback handler section
+async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle deletion confirmation callbacks"""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    if data == "cancel_delete":
+        await query.edit_message_text("❌ Deletion cancelled.")
+        return
+
+    if data.startswith("confirm_delete_"):
+        try:
+            # Parse callback data: confirm_delete_category_flag_indices
+            parts = data.split('_')
+            category = parts[2]
+            delete_flag = parts[3]  # -s or -h
+            indices_str = parts[4] if len(parts) > 4 else ""
+
+            storage_indices = [int(idx) for idx in indices_str.split(',')] if indices_str else []
+
+            # Get current user data
+            user_data = await db.get_user(user_id)
+            entries = user_data['stats'][category]['entries']
+
+            deleted_count = 0
+            entries_modified = False
+
+            for storage_idx in storage_indices:
+                if 0 <= storage_idx < len(entries):
+                    if delete_flag == '-s':
+                        # Soft delete - mark as deleted
+                        entries[storage_idx]['is_deleted'] = True
+                        entries_modified = True
+                        deleted_count += 1
+                    else:  # -h
+                        # Hard delete - remove from list
+                        entries.pop(storage_idx)
+                        entries_modified = True
+                        deleted_count += 1
+
+            if entries_modified:
+                await db.set_user(user_id, user_data)
+
+                if delete_flag == '-s':
+                    await query.edit_message_text(
+                        f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
+                        f"Use `/history-f {category}` to view or recover deleted entries."
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"💥 {deleted_count} entries permanently deleted from '{category}'."
+                    )
+            else:
+                await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
+
+        except Exception as e:
+            logger.error(f"Error processing deletion callback: {e}")
+            await query.edit_message_text("❌ Error processing deletion. Please try again.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async def handle_history_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /history-f command to show full history with recovery options"""
+    if not context.args:
+        await update.effective_message.reply_text(
+            "Usage: `/history-f <category>`\n"
+            "Shows all entries including deleted ones with recovery options.",
+            parse_mode='Markdown'
+        )
+        return
+
+    category = context.args[0].lower()
+    user_id = str(update.effective_user.id)
+    db = context.bot_data['db']
+
+    user_data = await db.get_user(user_id)
+
+    if category not in user_data.get('stats', {}):
+        await update.effective_message.reply_text(f"❌ Category '{category}' not found.")
+        return
+
+    entries = user_data['stats'][category]['entries']
+
+    if not entries:
+        await update.effective_message.reply_text(f"ℹ️ No entries found for '{category}'.")
+        return
+
+    # Group entries by local date (including deleted ones)
+    date_groups = []
+    current_local_date = None
+    current_group = []
+
+    for entry in entries:
+        # Get the entry's timezone and convert to local date
+        entry_tz = pytz.timezone(entry.get('timezone', 'UTC'))
+        entry_local_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00')).astimezone(entry_tz)
+        entry_local_date = entry_local_time.date()
+
+        if entry_local_date != current_local_date:
+            if current_group:
+                date_groups.append((current_local_date, current_group))
+            current_local_date = entry_local_date
+            current_group = []
+        current_group.append(entry)
+
+    if current_group:
+        date_groups.append((current_local_date, current_group))
+
+    # Build message with recovery buttons for deleted entries
+    messages = []
+    current_message = f"📊 *Full History for {category}:*\n\n"
+
+    for i, (local_date, group_entries) in enumerate(date_groups):
+        group_text = ""
+        if i > 0:
+            group_text += '─────────────────\n'
+
+        for entry in group_entries:
+            is_deleted = entry.get('is_deleted', False)
+            status_emoji = "❌" if is_deleted else "✅"
+
+            tag = f"[{entry['category']}] " if 'category' in entry else ''
+            formatted_time = format_timestamp(entry['timestamp'], entry.get('timezone', 'UTC'))
+
+            group_text += f"• {status_emoji} {tag}{entry['value']} - {formatted_time}"
+
+            if entry.get('note'):
+                group_text += f" - {entry['note']}"
+
+            # Add recovery button for deleted entries
+            if is_deleted:
+                # Find the entry index for recovery
+                entry_index = entries.index(entry)
+                group_text += f" [🔄 Recover]"
+
+            group_text += "\n"
+
+        if len(current_message + group_text) > 3500 and current_message.strip():
+            messages.append(current_message)
+            current_message = ""
+
+        current_message += group_text
+
+    if current_message.strip():
+        messages.append(current_message)
+
+    # Send all messages (for now without actual buttons - we'll add callback later)
+    for message in messages:
+        await update.effective_message.reply_text(message, parse_mode='Markdown')
+
+
+
+
+
+
+
+# Add recovery callback handler
+async def handle_recover_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle recovery of deleted entries"""
+    query = update.callback_query
+    await query.answer()
+
+    # This would be implemented similarly to the deletion callbacks
+    # For now, we'll add a placeholder
+    await query.edit_message_text("🔄 Recovery functionality will be implemented in the next phase.")
+
