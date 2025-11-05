@@ -605,6 +605,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     
     data = query.data
+    logger.info(f"GENERAL CALLBACK RECEIVED: {data}")  # ADD THIS LINE
     user_id = str(update.effective_user.id)
     db = context.bot_data['db']
 
@@ -850,12 +851,13 @@ def create_application():
     application.add_handler(CommandHandler("migrate", handle_migrate))
 
     application.add_handler(MessageHandler(filters.COMMAND, handle_unrecognized_command))
-    application.add_handler(CallbackQueryHandler(handle_callback))
-    application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern=".*"))
-
-    #application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_.*|cancel_delete)$"))
-    application.add_handler(CallbackQueryHandler(handle_recover_callback, pattern="^recover_.*"))
+    # REORDER AND UPDATE PATTERNS:
+    application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_|cancel_delete)"))
+    application.add_handler(CallbackQueryHandler(handle_recover_callback, pattern="^recover_"))
+    application.add_handler(CallbackQueryHandler(handle_callback))  # Catch-all handler LAST
     
+
+     #application.add_handler(CallbackQueryHandler(handle_delete_callback, pattern="^(confirm_delete_.*|cancel_delete)$"))
     return application
 
 
