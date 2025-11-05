@@ -573,15 +573,23 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             for storage_idx in storage_indices:
                 if 0 <= storage_idx < len(entries):
                     if delete_flag == '-s':
-                        # Soft delete - mark as deleted
-                        entries[storage_idx]['is_deleted'] = True
-                        entries_modified = True
-                        deleted_count += 1
+                        for storage_idx in storage_indices:
+                                if 0 <= storage_idx < len(entries):
+                                    entries[storage_idx]['is_deleted'] = True
+                                    entries_modified = True
+                                    deleted_count += 1
                     else:  # -h
-                        # Hard delete - remove from list
-                        entries.pop(storage_idx)
-                        entries_modified = True
-                        deleted_count += 1
+                        # Hard delete - create new list excluding the indices to delete
+                        entries_to_keep = []
+                        for i, entry in enumerate(entries):
+                            if i not in storage_indices:
+                                entries_to_keep.append(entry)
+                            else:
+                                entries_modified = True
+                                deleted_count += 1
+                        # Replace the entries list with the filtered list
+                        user_data['stats'][category]['entries'] = entries_to_keep
+
 
             if entries_modified:
                 await db.set_user(user_id, user_data)
