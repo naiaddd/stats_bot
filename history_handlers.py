@@ -263,10 +263,11 @@ async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "`/r <category>` - Show entries with indices\n"
             "`/r <category> <indices> -s` - Soft delete (recoverable)\n"
             "`/r <category> <indices> -h` - Hard delete (permanent)\n\n"
-            "*Examples:*\n"
-            "`/r weight` - Show weight entries\n"
-            "`/r weight 2 -s` - Soft delete entry #2\n"
-            "`/r weight 1,3-5 -h` - Hard delete entries 1,3,4,5\n\n"
+            "*Supported formats:*\n"
+            "`/r weight 1,2 -s` - Delete entries 1 & 2\n"
+            "`/r weight 1, 2 -s` - Delete entries 1 & 2\n"
+            "`/r weight 1-3 -h` - Delete entries 1,2,3\n"
+            "`/r weight 1-3,5 -s` - Delete entries 1,2,3,5\n\n"
             "Use `/history_f <category>` to view and recover deleted entries."
         )
         await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -329,21 +330,51 @@ async def _show_entries_with_indices(update: Update, category: str, entries: Lis
 
     await update.message.reply_text(message, parse_mode='Markdown')
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                  user_data: Dict, category: str, entries: List[Dict],
                                  user_id: str, db) -> None:
     """Handle the actual deletion command with indices and flags"""
     try:
-        # Parse indices and flag
-        indices_str = context.args[1]
-        delete_flag = context.args[2] if len(context.args) > 2 else None
+        # Find the deletion flag position
+        delete_flag = None
+        flag_position = -1
 
-        if not delete_flag or delete_flag not in ['-s', '-h']:
+        for i, arg in enumerate(context.args[1:], 1):
+            if arg in ['-s', '-h']:
+                delete_flag = arg
+                flag_position = i
+                break
+
+        if not delete_flag:
             await update.message.reply_text(
                 "❌ Missing deletion flag. Use `-s` for soft delete or `-h` for hard delete.\n"
-                "Example: `/r {category} {indices_str} -s`"
+                "Example: `/r test 1,2 -s` or `/r test 1, 2 -h`"
             )
             return
+
+        # Join all arguments between category and flag as indices string
+        if flag_position > 1:  # There are indices between category and flag
+            indices_parts = context.args[1:flag_position]
+            indices_str = ' '.join(indices_parts)
+        else:
+            indices_str = ""
 
         # Parse indices (support for single, multiple, and ranges)
         target_indices = await _parse_indices(indices_str, entries)
@@ -352,9 +383,9 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
             await update.message.reply_text(
                 "❌ Invalid indices format. Use:\n"
                 "• Single: `2`\n"
-                "• Multiple: `1,3,5`\n"
+                "• Multiple: `1,3,5` or `1, 3, 5`\n"
                 "• Range: `1-5`\n"
-                "• Mixed: `1,3-5,7`"
+                "• Mixed: `1,3-5,7` or `1, 3-5, 7`"
             )
             return
 
@@ -388,6 +419,7 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
                 'index': storage_index,
                 'entry': target_entry
             })
+
         # Show confirmation
         await _show_deletion_confirmation(update, category, entries_to_delete, delete_flag)
 
@@ -396,8 +428,20 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(
             "❌ Error parsing command. Use:\n"
             "`/r <category> <indices> -s` for soft delete\n"
-            "`/r <category> <indices> -h` for hard delete"
+            "`/r <category> <indices> -h` for hard delete\n\n"
+            "Supported formats:\n"
+            "• `/r test 1,2 -s`\n"
+            "• `/r test 1, 2 -s`\n"
+            "• `/r test 1-5 -h`\n"
+            "• `/r test 1-3,5 -s`"
         )
+
+
+
+
+
+
+
 
 
 
@@ -420,10 +464,14 @@ async def _parse_indices(indices_str: str, entries: List[Dict]) -> List[int]:
 
     try:
         indices = set()
-        parts = indices_str.split(',')
+        # Remove spaces for cleaner parsing, then split by commas
+        cleaned_str = indices_str.replace(' ', '')
+        parts = cleaned_str.split(',')
 
         for part in parts:
             part = part.strip()
+            if not part:  # Skip empty parts from trailing commas
+                continue
             if '-' in part:
                 # Range like 1-5
                 start, end = map(int, part.split('-'))
@@ -435,7 +483,6 @@ async def _parse_indices(indices_str: str, entries: List[Dict]) -> List[int]:
         return sorted(list(indices))
     except (ValueError, AttributeError):
         return []
-
 
 
 
