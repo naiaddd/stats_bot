@@ -582,23 +582,6 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 
-if delete_flag == '-s':
-    for storage_idx in storage_indices:  # NESTED LOOP - REMOVE THIS
-        if 0 <= storage_idx < len(entries):
-            entries[storage_idx]['is_deleted'] = True
-            entries_modified = True
-            deleted_count += 1
-
-# FIXED CODE:
-if delete_flag == '-s':
-    for storage_idx in storage_indices:
-        if 0 <= storage_idx < len(entries):
-            entries[storage_idx]['is_deleted'] = True
-            entries_modified = True
-            deleted_count += 1
-
-
-
 
 
 
