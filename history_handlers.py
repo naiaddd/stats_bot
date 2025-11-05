@@ -435,7 +435,7 @@ async def _handle_deletion_command(update: Update, context: ContextTypes.DEFAULT
             "• `/r test 1,2 -s`\n"
             "• `/r test 1, 2 -s`\n"
             "• `/r test 1-5 -h`\n"
-            "• `/r test 1-3,5 -s`"
+            "• `/r test 1-3,5 -s`",
             parse_mode=None
         )
 
