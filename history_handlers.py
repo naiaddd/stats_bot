@@ -95,7 +95,7 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text(f"❌ No category or group named '{category}'")
         return
 
-    entries = [entry for entry in entries if not entry.get('is_deleted', False)]
+    entries = [entry for entry in entries if entry and not entry.get('is_deleted', False)]
 
 
     if not entries:
@@ -293,6 +293,25 @@ async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Parse deletion command
     await _handle_deletion_command(update, context, user_data, category, entries, user_id, db)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def _show_entries_with_indices(update: Update, category: str, entries: List[Dict]) -> None:
     """Show entries with their current indices"""
     if not entries:
@@ -300,7 +319,11 @@ async def _show_entries_with_indices(update: Update, category: str, entries: Lis
         return
 
     # Filter out deleted entries for display
-    active_entries = [entry for entry in entries if not entry.get('is_deleted', False)]
+    active_entries = []
+    for entry in entries:
+        # check for soft deletion
+        if entry and not entry.get('is_deleted', False):
+            active_entries.append(entry)
 
     if not active_entries:
         await update.message.reply_text(
@@ -313,6 +336,8 @@ async def _show_entries_with_indices(update: Update, category: str, entries: Lis
     active_entries.reverse()
 
     message = f"📋 Current entries for '{category}' (newest first):\n\n"
+
+
 
     for i, entry in enumerate(active_entries, 1):
         formatted_time = format_timestamp(entry['timestamp'], entry.get('timezone', 'UTC'))
@@ -559,8 +584,6 @@ async def _show_deletion_confirmation(update: Update, category: str,
 
 
 
-
-# Add this to the callback handler section
 async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle deletion confirmation callbacks"""
     query = update.callback_query
@@ -592,50 +615,51 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
             deleted_count = 0
             entries_modified = False
 
-            for storage_idx in storage_indices:
-                if 0 <= storage_idx < len(entries):
-                    if delete_flag == '-s':
+            logger.info(f"Processing {delete_flag} delete for category '{category}', indices: {storage_indices}")
+            logger.info(f"Total entries before: {len(entries)}")
+
+            if delete_flag == '-s':
+                # Soft delete - mark entries as deleted
+                for storage_idx in storage_indices:
+                    if 0 <= storage_idx < len(entries):
                         entries[storage_idx]['is_deleted'] = True
                         entries_modified = True
                         deleted_count += 1
-                    else:  # -h
-                        # Hard delete - create new list excluding the indices to delete
-                        entries_to_keep = []
-                        for i, entry in enumerate(entries):
-                            if i not in storage_indices:
-                                entries_to_keep.append(entry)
-                            else:
-                                entries_modified = True
-                                deleted_count += 1
-                        # Replace the entries list with the filtered list
-                        user_data['stats'][category]['entries'] = entries_to_keep
-
-
-                if entries_modified:
-                    await db.set_user(user_id, user_data)
-
-                    if delete_flag == '-s':
-                        await query.edit_message_text(
-                            f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
-                            f"Use `/history_f {category}` to view or recover deleted entries."
-                        )
+                        logger.info(f"Soft deleted entry at index {storage_idx}: {entries[storage_idx]}")
+            else:  # -h
+                # Hard delete - create new list excluding the indices to delete
+                entries_to_keep = []
+                for i, entry in enumerate(entries):
+                    if i not in storage_indices:
+                        entries_to_keep.append(entry)
                     else:
-                        await query.edit_message_text(
-                            f"💥 {deleted_count} entries permanently deleted from '{category}'."
-                        )
-                else:
-                    await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
+                        entries_modified = True
+                        deleted_count += 1
+                        logger.info(f"Hard deleted entry at index {i}")
+                # Replace the entries list with the filtered list
+                user_data['stats'][category]['entries'] = entries_to_keep
 
+            if entries_modified:
+                await db.set_user(user_id, user_data)
+                logger.info(f"Saved changes to database. Total entries after: {len(user_data['stats'][category]['entries'])}")
+
+                if delete_flag == '-s':
+                    await query.edit_message_text(
+                        f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
+                        f"Use `/history_f {category}` to view or recover deleted entries."
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"💥 {deleted_count} entries permanently deleted from '{category}'."
+                    )
+            else:
+                await query.edit_message_text("❌ No entries were deleted. They may have been modified since confirmation.")
 
         except Exception as e:
             logger.error(f"Error processing deletion callback: {e}")
             logger.error(f"Callback data: {data}")
             logger.error(f"Parsed parts: category={category}, flag={delete_flag}, indices={storage_indices}")
             await query.edit_message_text("❌ Error processing deletion. Please try again.")
-
-
-
-
 
 
 
