@@ -20,6 +20,7 @@ import pytz
 
 '''from history_handlers import handle_history, format_timestamp, handle_r, handle_delete_callback, handle_recover_callback, handle_history_f
 '''
+'''
 from history_handlers import (
     handle_history,
     handle_r,
@@ -28,7 +29,9 @@ from history_handlers import (
     handle_history_f,
     format_timestamp
 )
+'''
 
+from history_handlers import *
 
 logging.getLogger(__name__).setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
