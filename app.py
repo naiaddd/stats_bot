@@ -195,7 +195,7 @@ Track any metric across all your devices:
 /add - Add an entry to a stat
 /view - View your stats
 /history - See stat history
-/history-f - See soft deletes
+/history_f - See soft deletes
 /group - Add category groups
 /delete - Delete a category
 /r - Delete entries
@@ -838,7 +838,7 @@ def create_application():
     application.add_handler(CommandHandler("add", handle_add))
     application.add_handler(CommandHandler("view", handle_view))
     application.add_handler(CommandHandler("history", handle_history))
-    application.add_handler(CommandHandler("history-f", handle_history_f))
+    application.add_handler(CommandHandler("history_f", handle_history_f))
 
     application.add_handler(CommandHandler("r", handle_r))
     application.add_handler(CommandHandler("delete", handle_delete))

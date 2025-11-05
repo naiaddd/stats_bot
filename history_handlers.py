@@ -267,7 +267,7 @@ async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "`/r weight` - Show weight entries\n"
             "`/r weight 2 -s` - Soft delete entry #2\n"
             "`/r weight 1,3-5 -h` - Hard delete entries 1,3,4,5\n\n"
-            "Use `/history-f <category>` to view and recover deleted entries."
+            "Use `/history_f <category>` to view and recover deleted entries."
         )
         await update.message.reply_text(help_text, parse_mode='Markdown')
         return
@@ -304,7 +304,7 @@ async def _show_entries_with_indices(update: Update, category: str, entries: Lis
     if not active_entries:
         await update.message.reply_text(
             f"ℹ️ No active entries found for '{category}'.\n"
-            f"Use `/history-f {category}` to view deleted entries."
+            f"Use `/history_f {category}` to view deleted entries."
         )
         return
 
@@ -472,7 +472,7 @@ async def _show_deletion_confirmation(update: Update, category: str,
         message += "\n"
 
     if delete_flag == '-s':
-        message += "\n_Soft deleted entries can be recovered with /history-f_"
+        message += "\n_Soft deleted entries can be recovered with /history_f_"
     else:
         message += "\n_⚠️ Hard deletion is PERMANENT and cannot be undone_"
 
@@ -542,7 +542,7 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
                 if delete_flag == '-s':
                     await query.edit_message_text(
                         f"✅ {deleted_count} entries soft deleted from '{category}'.\n"
-                        f"Use `/history-f {category}` to view or recover deleted entries."
+                        f"Use `/history_f {category}` to view or recover deleted entries."
                     )
                 else:
                     await query.edit_message_text(
@@ -569,10 +569,10 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def handle_history_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /history-f command to show full history with recovery options"""
+    """Handle /history_f command to show full history with recovery options"""
     if not context.args:
         await update.effective_message.reply_text(
-            "Usage: `/history-f <category>`\n"
+            "Usage: `/history_f <category>`\n"
             "Shows all entries including deleted ones with recovery options.",
             parse_mode='Markdown'
         )
