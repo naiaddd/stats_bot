@@ -79,18 +79,18 @@ async def handle_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_group:
         # Get entries from all categories in the group
-        group_categories = user_data['groups'][category]
+        group_categories = user_data['groups'].get(category, [])
         for cat in group_categories:
             if cat in user_data['stats']:
-                cat_entries = user_data['stats'][cat]['entries']
+                cat_entries = user_data['stats'][cat].get('entries', [])
                 for entry in cat_entries:
                     entry_with_category = entry.copy()
                     entry_with_category['category'] = cat
                     entries.append(entry_with_category)
         # Sort by timestamp
-        entries.sort(key=lambda x: x['timestamp'])
+        entries.sort(key=lambda x: x.get('timestamp', ''))
     elif category in user_data['stats']:
-        entries = user_data['stats'][category]['entries']
+        entries = user_data['stats'][category].get('entries', [])
     else:
         await update.effective_message.reply_text(f"❌ No category or group named '{category}'")
         return
@@ -283,7 +283,7 @@ async def handle_r(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"❌ Category '{category}' not found.")
         return
 
-    entries = user_data['stats'][category]['entries']
+    entries = user_data['stats'][category].get('entries', [])
 
     # Show entries with indices if no deletion flags
     if len(context.args) == 1 or (len(context.args) == 2 and context.args[1] not in ['-s', '-h']):
@@ -688,7 +688,7 @@ async def handle_history_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.effective_message.reply_text(f"❌ Category '{category}' not found.")
         return
 
-    entries = user_data['stats'][category]['entries']
+    entries = user_data['stats'][category].get('entries', [])
 
     if not entries:
         await update.effective_message.reply_text(f"ℹ️ No entries found for '{category}'.")
@@ -702,7 +702,11 @@ async def handle_history_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     for entry in entries:
         # Get the entry's timezone and convert to local date
         entry_tz = pytz.timezone(entry.get('timezone', 'UTC'))
-        entry_local_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00')).astimezone(entry_tz)
+        timestamp = entry.get('timestamp')
+        if not timestamp:
+            continue
+            
+        entry_local_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).astimezone(entry_tz)
         entry_local_date = entry_local_time.date()
 
         if entry_local_date != current_local_date:
