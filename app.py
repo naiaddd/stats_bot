@@ -17,6 +17,7 @@ import pytz
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -47,9 +48,22 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(update, Update) and update.effective_message:
         # Avoid replying if it's already a failed callback query that might have been answered
         try:
-            await update.effective_message.reply_text(
-                "❌ An unexpected error occurred. Please try again later."
-            )
+            if isinstance(context.error, httpx.HTTPStatusError):
+                status = context.error.response.status_code
+                detail = context.error.response.text
+                error_msg = f"❌ Database Error (HTTP {status}): {detail}"
+            elif isinstance(context.error, TelegramError):
+                error_msg = f"❌ Telegram API Error: {str(context.error)}"
+            elif isinstance(context.error, ValueError):
+                error_msg = f"❌ Validation Error: {str(context.error)}"
+            else:
+                error_msg = f"❌ An unexpected error occurred: {type(context.error).__name__}"
+            
+            # Truncate if too long for Telegram message limit
+            if len(error_msg) > 4000:
+                error_msg = error_msg[:4000] + "..."
+                
+            await update.effective_message.reply_text(error_msg)
         except Exception as e:
             logger.error(f"Failed to send error message: {e}")
 
@@ -278,9 +292,9 @@ async def handle_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await db.create_category(user_id, category)
     await update.message.reply_text(
-        f"✅ Created new category: *{category}*\n"
-        f"Use /add {category} <value> to log entries!",
-        parse_mode="Markdown",
+        f"✅ Created new category: <b>{category}</b>\n"
+        f"Use /add {category} &lt;value&gt; to log entries!",
+        parse_mode="HTML",
     )
 
 
@@ -340,7 +354,7 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await db.add_entry(user_id, category, entry)
 
 
-    response = f"✅ Added to *{category}*: {value}"
+    response = f"✅ Added to <b>{category}</b>: {value}"
     if note:
         response += f"\n📝 Note: {note}"
 
@@ -348,7 +362,7 @@ async def handle_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     formatted_time = format_timestamp(local_time.isoformat(), user_data["timezone"])
     response += f"\n🕒 Recorded at: {formatted_time}"
 
-    await update.message.reply_text(response, parse_mode="Markdown")
+    await update.message.reply_text(response, parse_mode="HTML")
 
 
 async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
